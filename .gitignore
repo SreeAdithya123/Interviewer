@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+reference/lovable-site/node_modules/
+
+# Next.js / web build output
+.next/
+dist/
+build/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Env files
+.env
+.env.local
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Vercel
+.vercel/
+
+# Coverage
+coverage/

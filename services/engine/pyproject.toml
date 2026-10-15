@@ -1,0 +1,7 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# Default rule set (pycodestyle + pyflakes) is enabled implicitly; nothing
+# extra selected for Phase 0.

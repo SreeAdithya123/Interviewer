@@ -1,0 +1,940 @@
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { useSubscription } from '@/hooks/useSubscription';
+
+import { useInterviewCredits } from '@/hooks/useInterviewCredits';
+import Layout from '@/components/Layout';
+import ProtectedRoute from '@/components/ProtectedRoute';
+import InterviewerControlPanel from '@/components/interviewer/InterviewerControlPanel';
+import InterviewerConversationPanel from '@/components/interviewer/InterviewerConversationPanel';
+import InterviewerRightPanel from '@/components/interviewer/InterviewerRightPanel';
+import InterviewerPageHeader from '@/components/interviewer/InterviewerPageHeader';
+import InterviewSetupForm from '@/components/interviewer/InterviewSetupForm';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { motion } from 'framer-motion';
+import { Clock, Loader2 } from 'lucide-react';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { StatusPill } from '@/components/app/primitives';
+import { getSupportedMediaRecorderMimeTypes } from '@/utils/mediaRecorder';
+
+const EASE = [0.22, 1, 0.36, 1] as const;
+
+export interface Message {
+  id: string;
+  role: 'ai' | 'user';
+  text: string;
+  timestamp: Date;
+  audioUrl?: string;
+}
+
+export interface TranscriptChunk {
+  id: string;
+  text: string;
+  isFinal: boolean;
+  confidence: number;
+  timestamp: Date;
+}
+
+export interface InterviewSettings {
+  role: string;
+  type: 'HR' | 'Behavioral' | 'Technical' | 'System Design' | 'Mixed';
+  difficulty: 'Easy' | 'Medium' | 'Hard';
+  duration: number;
+  language: string;
+  voice: string;
+  targetLanguageCode: string;
+  pace: number;
+  pitch: number;
+}
+
+export interface LatencyStats {
+  stt: number;
+  llm: number;
+  tts: number;
+}
+
+export interface ConnectionStatus {
+  stt: 'connected' | 'disconnected' | 'connecting';
+  tts: 'ready' | 'error' | 'loading';
+  llm: 'groq' | 'openrouter' | 'disconnected';
+}
+
+const Interviewer = () => {
+  const navigate = useNavigate();
+  const { user, signOut } = useAuth();
+  const { subscription, isPro, isPlus } = useSubscription();
+  
+  const {
+    timeRemaining,
+    formattedTimeRemaining,
+    deductCreditForStart,
+    startInterviewTimer,
+    endInterview,
+  } = useInterviewCredits();
+  
+  // Setup state - shows form before interview starts
+  const [showSetupForm, setShowSetupForm] = useState(true);
+  const [isStartingInterview, setIsStartingInterview] = useState(false);
+  
+  // Session state
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<Date | null>(null);
+  const [questionStartTime, setQuestionStartTime] = useState<Date | null>(null);
+  
+  // Audio controls
+  const [isMicEnabled, setIsMicEnabled] = useState(true);
+  const [isSpeakerEnabled, setIsSpeakerEnabled] = useState(true);
+  const [isPushToTalk, setIsPushToTalk] = useState(true); // Default ON for reliable experience
+  const [isPushToTalkActive, setIsPushToTalkActive] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+  
+  // Conversation state
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [transcriptChunks, setTranscriptChunks] = useState<TranscriptChunk[]>([]);
+  const [currentInterimText, setCurrentInterimText] = useState('');
+  const [eventLogs, setEventLogs] = useState<string[]>([]);
+  
+  // Connection status
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>({
+    stt: 'disconnected',
+    tts: 'ready',
+    llm: isPro || isPlus ? 'groq' : 'openrouter'
+  });
+  
+  // Settings
+  const [settings, setSettings] = useState<InterviewSettings>({
+    role: 'Software Engineer',
+    type: 'Technical',
+    difficulty: 'Medium',
+    duration: 30,
+    language: 'English',
+    voice: 'Anushka',
+    targetLanguageCode: 'en-IN',
+    pace: 1.0,
+    pitch: 1.0
+  });
+  
+  // Latency tracking
+  const [latencyStats, setLatencyStats] = useState<LatencyStats>({
+    stt: 0,
+    llm: 0,
+    tts: 0
+  });
+  
+  // Refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const silenceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const audioQueueRef = useRef<HTMLAudioElement[]>([]);
+  const isPlayingRef = useRef(false);
+  const vadIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const mimeTypeRef = useRef<string>('audio/webm');
+  const endAndGenerateReportRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const isRecordingRef = useRef(false); // Track recording state via ref to avoid stale closures
+  const isProcessingRef = useRef(false); // Track processing state via ref
+  const getAIResponseRef = useRef<(isInitial: boolean, newUserText?: string) => Promise<void>>(() => Promise.resolve());
+  const lastRecordingErrorAtRef = useRef<number>(0);
+
+  const addLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    setEventLogs(prev => [`[${timestamp}] ${message}`, ...prev.slice(0, 99)]);
+  }, []);
+
+  const generateId = () => Math.random().toString(36).substr(2, 9);
+
+  // Voice Activity Detection (VAD) - detect when user stops speaking
+  const startVAD = useCallback(() => {
+    if (!analyserRef.current) return;
+    
+    const analyser = analyserRef.current;
+    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+    const SILENCE_THRESHOLD = 20; // Audio level below this = silence
+    const SILENCE_DURATION = 1500; // 1.5s of silence = end of utterance
+    
+    let isSpeaking = false;
+    
+    vadIntervalRef.current = setInterval(() => {
+      analyser.getByteFrequencyData(dataArray);
+      const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
+      
+      if (average > SILENCE_THRESHOLD) {
+        // User is speaking
+        if (!isSpeaking && !isRecording && isMicEnabled) {
+          isSpeaking = true;
+          startRecording();
+        }
+        // Reset silence timeout
+        if (silenceTimeoutRef.current) {
+          clearTimeout(silenceTimeoutRef.current);
+          silenceTimeoutRef.current = null;
+        }
+      } else {
+        // Silence detected
+        if (isSpeaking && isRecording && !silenceTimeoutRef.current) {
+          silenceTimeoutRef.current = setTimeout(() => {
+            isSpeaking = false;
+            stopRecording();
+            silenceTimeoutRef.current = null;
+          }, SILENCE_DURATION);
+        }
+      }
+    }, 100);
+  }, [isRecording, isMicEnabled]);
+
+  // Start recording a single utterance
+  const startRecording = useCallback(() => {
+    // Use ref to check recording state to avoid stale closure issues
+    if (!streamRef.current || isRecordingRef.current) {
+      console.log('startRecording: skipped - no stream or already recording', { 
+        hasStream: !!streamRef.current, 
+        isRecording: isRecordingRef.current 
+      });
+      return;
+    }
+
+    if (typeof MediaRecorder === 'undefined') {
+      const msg = 'Recording is not supported in this browser (MediaRecorder unavailable).';
+      console.error(msg);
+      addLog(msg);
+      toast.error('Audio recording is not supported in this browser. Try Chrome/Edge.');
+      return;
+    }
+
+     // Some browsers can grant permission but still provide a stream without an audio track.
+     if (streamRef.current.getAudioTracks().length === 0) {
+       const msg = 'No audio track available in microphone stream.';
+       console.error(msg);
+       addLog(msg);
+       return;
+     }
+    
+    try {
+      const mimeTypesToTry = getSupportedMediaRecorderMimeTypes();
+      let lastError: unknown = null;
+
+      for (const mimeType of mimeTypesToTry) {
+        try {
+          console.log('startRecording: trying mimeType', mimeType || '(browser default)');
+          mimeTypeRef.current = mimeType || 'audio/webm';
+
+          const mediaRecorder = mimeType
+            ? new MediaRecorder(streamRef.current, { mimeType })
+            : new MediaRecorder(streamRef.current);
+
+          // Reset state for this attempt
+          mediaRecorderRef.current = mediaRecorder;
+          audioChunksRef.current = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            console.log('Recording: data available, size:', event.data.size);
+            if (event.data.size > 0) {
+              audioChunksRef.current.push(event.data);
+            }
+          };
+
+          mediaRecorder.onstop = async () => {
+            console.log('Recording: stopped, chunks:', audioChunksRef.current.length);
+            isRecordingRef.current = false;
+            setIsRecording(false);
+
+            if (audioChunksRef.current.length > 0) {
+              const blobType = mimeType || mediaRecorder.mimeType || mimeTypeRef.current;
+              const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
+              audioChunksRef.current = [];
+
+              console.log('Recording: blob size', audioBlob.size, 'type:', blobType);
+              // Only process if blob is substantial (>5KB)
+              if (audioBlob.size > 5000) {
+                await processCompleteAudio(audioBlob, blobType);
+              } else {
+                addLog('Audio too short, skipping');
+              }
+            }
+          };
+
+          // Request data every 250ms to ensure we capture audio chunks
+          mediaRecorder.start(250);
+
+          isRecordingRef.current = true;
+          setIsRecording(true);
+          setCurrentInterimText('Listening...');
+          addLog('Recording started');
+          console.log('startRecording: recording started successfully');
+          return;
+        } catch (err) {
+          lastError = err;
+          console.error('startRecording: mimeType attempt failed', mimeType || '(default)', err);
+          // Make sure we don't leave a half-initialized recorder around.
+          try {
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+              mediaRecorderRef.current.stop();
+            }
+          } catch {
+            // ignore
+          }
+          mediaRecorderRef.current = null;
+          audioChunksRef.current = [];
+        }
+      }
+
+      // If all attempts failed, surface the last error.
+      throw lastError instanceof Error ? lastError : new Error('MediaRecorder failed to start');
+    } catch (error: any) {
+      console.error('Recording start error:', error);
+      addLog(`Recording error: ${error.message}`);
+
+      // Avoid spamming toasts if VAD/handlers retry rapidly.
+      const now = Date.now();
+      if (now - lastRecordingErrorAtRef.current > 5000) {
+        toast.error('Could not start audio recording in this browser. Try Chrome/Edge or reload the page.');
+        lastRecordingErrorAtRef.current = now;
+      }
+
+      isRecordingRef.current = false;
+      setIsRecording(false);
+      mediaRecorderRef.current = null;
+      audioChunksRef.current = [];
+    }
+  }, [addLog]);
+
+  // Stop recording
+  const stopRecording = useCallback(() => {
+    console.log('stopRecording called, state:', mediaRecorderRef.current?.state);
+    if (!isRecordingRef.current) return;
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+      addLog('Recording stopped');
+      console.log('stopRecording: stopped successfully');
+    }
+  }, [addLog]);
+
+  // Process complete audio through Sarvam STT
+  const processCompleteAudio = useCallback(async (audioBlob: Blob, mimeType: string) => {
+    // Use ref to avoid stale closures
+    if (isProcessingRef.current) {
+      console.log('processCompleteAudio: skipped - already processing');
+      return;
+    }
+    
+    try {
+      isProcessingRef.current = true;
+      setIsProcessingAudio(true);
+      setCurrentInterimText('Processing speech...');
+      const sttStart = Date.now();
+      
+      console.log('processCompleteAudio: sending', (audioBlob.size / 1024).toFixed(1), 'KB to STT');
+      addLog(`Processing audio: ${(audioBlob.size / 1024).toFixed(1)}KB`);
+      
+      // Convert blob to base64
+      const reader = new FileReader();
+      const base64Audio = await new Promise<string>((resolve, reject) => {
+        reader.onloadend = () => {
+          const base64 = (reader.result as string).split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
+      
+      console.log('processCompleteAudio: base64 length', base64Audio.length);
+      
+      const { data, error } = await supabase.functions.invoke('interviewer-stt', {
+        body: { audioData: base64Audio, mimeType }
+      });
+      
+      console.log('processCompleteAudio: STT response', data, error);
+      
+      const sttLatency = Date.now() - sttStart;
+      setLatencyStats(prev => ({ ...prev, stt: sttLatency }));
+      
+      if (error) throw error;
+      
+      setCurrentInterimText('');
+      
+      if (data?.transcript && data.transcript.trim()) {
+        const chunk: TranscriptChunk = {
+          id: generateId(),
+          text: data.transcript,
+          isFinal: true,
+          confidence: data.confidence ?? 0.9,
+          timestamp: new Date()
+        };
+        
+        setTranscriptChunks(prev => [...prev, chunk]);
+        
+        // Add as user message
+        const userMessage: Message = {
+          id: generateId(),
+          role: 'user',
+          text: data.transcript,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, userMessage]);
+        
+        addLog(`STT: "${data.transcript.substring(0, 50)}..." (${sttLatency}ms, ${Math.round((data.confidence ?? 0.9) * 100)}% conf)`);
+        
+        // Get AI response - use ref to avoid circular dependency
+        await getAIResponseRef.current(false, data.transcript);
+      } else {
+        addLog('No speech detected in audio');
+      }
+    } catch (error: any) {
+      console.error('STT Error:', error);
+      addLog(`STT Error: ${error.message}`);
+      setCurrentInterimText('');
+    } finally {
+      isProcessingRef.current = false;
+      setIsProcessingAudio(false);
+    }
+  }, [addLog]);
+
+  // Auto-end interview when timer runs out
+  const handleAutoEndInterview = useCallback(async () => {
+    addLog('Interview time limit reached (10 minutes)');
+    await endAndGenerateReportRef.current();
+  }, [addLog]);
+
+  // Start interview session (called only from handleStartFromSetup)
+  const startSession = useCallback(async () => {
+    // Guard against duplicate starts
+    if (isSessionActive) {
+      addLog('Session already active, ignoring duplicate start');
+      return;
+    }
+    
+    try {
+      addLog('Starting interview session...');
+      
+      // Request mic permissions
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        } 
+      });
+      streamRef.current = stream;
+      
+      setIsSessionActive(true);
+      setSessionStartTime(new Date());
+      setConnectionStatus(prev => ({ ...prev, stt: 'connecting' }));
+      
+      addLog('Microphone access granted');
+      
+      // Start the 10-minute interview timer
+      startInterviewTimer(handleAutoEndInterview);
+      
+      // Initialize audio context and analyser for VAD
+      const audioContext = new AudioContext();
+      audioContextRef.current = audioContext;
+      
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
+      
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      
+      setConnectionStatus(prev => ({ ...prev, stt: 'connected' }));
+      addLog('Audio pipeline ready');
+      
+      // Only start VAD if NOT in push-to-talk mode
+      if (!isPushToTalk) {
+        startVAD();
+      }
+      
+    } catch (error: any) {
+      console.error('Error starting session:', error);
+      if (error.name === 'NotAllowedError') {
+        toast.error('Microphone access denied. Please enable microphone permissions.');
+      } else {
+        toast.error('Failed to start interview session');
+      }
+      addLog(`Error: ${error.message}`);
+      throw error;
+    }
+  }, [addLog, startVAD, isPushToTalk, startInterviewTimer, handleAutoEndInterview, isSessionActive]);
+
+  // Push-to-talk start - begins recording
+  const handlePushToTalkStart = useCallback(() => {
+    console.log('handlePushToTalkStart called', { 
+      isSessionActive, 
+      sessionStartTime: !!sessionStartTime,
+      hasStream: !!streamRef.current 
+    });
+    
+    // Allow PTT if session is active OR sessionStartTime is set (handles race condition)
+    if ((!isSessionActive && !sessionStartTime) || !streamRef.current) {
+      console.log('handlePushToTalkStart: blocked - session not ready');
+      return;
+    }
+    
+    setIsPushToTalkActive(true);
+    startRecording();
+  }, [isSessionActive, sessionStartTime, startRecording]);
+
+  // Push-to-talk end - stops recording and processes audio
+  const handlePushToTalkEnd = useCallback(() => {
+    console.log('handlePushToTalkEnd called', { isPushToTalkActive });
+    if (!isPushToTalkActive) return;
+    setIsPushToTalkActive(false);
+    stopRecording();
+  }, [isPushToTalkActive, stopRecording]);
+
+  // Get AI response from LLM
+  // newUserText is passed to ensure we include the latest user message (avoids stale closure)
+  const getAIResponse = useCallback(async (isInitial: boolean = false, newUserText?: string) => {
+    try {
+      const llmStart = Date.now();
+      addLog(isInitial ? 'Getting initial question...' : 'Getting AI response...');
+      
+      const userPlan = isPro ? 'pro' : isPlus ? 'plus' : 'free';
+      
+      // Build message history including the new user message if provided
+      const messageHistory = messages.map(m => ({ 
+        role: m.role === 'ai' ? 'assistant' : 'user', 
+        content: m.text 
+      }));
+      
+      // Append new user message if provided (to avoid stale state issue)
+      if (newUserText) {
+        messageHistory.push({ role: 'user', content: newUserText });
+      }
+      
+      const { data, error } = await supabase.functions.invoke('interviewer-llm', {
+        body: {
+          messages: messageHistory,
+          interview_settings: settings,
+          user_plan: userPlan,
+          is_initial: isInitial
+        }
+      });
+      
+      const llmLatency = Date.now() - llmStart;
+      setLatencyStats(prev => ({ ...prev, llm: llmLatency }));
+      
+      if (error) throw error;
+      
+      if (data?.ai_text) {
+        const aiMessage: Message = {
+          id: generateId(),
+          role: 'ai',
+          text: data.ai_text,
+          timestamp: new Date()
+        };
+        setMessages(prev => [...prev, aiMessage]);
+        setQuestionStartTime(new Date());
+        
+        addLog(`LLM Response (${data.provider_used}): ${llmLatency}ms`);
+        setConnectionStatus(prev => ({ ...prev, llm: data.provider_used }));
+        
+        // Convert to speech
+        if (isSpeakerEnabled) {
+          await speakText(data.ai_text);
+        }
+      }
+    } catch (error: any) {
+      console.error('LLM Error:', error);
+      addLog(`LLM Error: ${error.message}`);
+      toast.error('Failed to get AI response. Please try again.');
+    }
+  }, [messages, settings, isPro, isPlus, isSpeakerEnabled, addLog]);
+
+  // Keep getAIResponseRef updated to avoid stale closures in processCompleteAudio
+  useEffect(() => {
+    getAIResponseRef.current = getAIResponse;
+  }, [getAIResponse]);
+
+  // Text-to-Speech using Sarvam
+  const speakText = useCallback(async (text: string) => {
+    try {
+      const ttsStart = Date.now();
+      setConnectionStatus(prev => ({ ...prev, tts: 'loading' }));
+      addLog('Converting to speech...');
+      
+      const { data, error } = await supabase.functions.invoke('interviewer-tts', {
+        body: {
+          text,
+          voice: settings.voice,
+          target_language_code: settings.targetLanguageCode,
+          pace: settings.pace,
+          pitch: settings.pitch
+        }
+      });
+      
+      const ttsLatency = Date.now() - ttsStart;
+      setLatencyStats(prev => ({ ...prev, tts: ttsLatency }));
+      
+      if (error) throw error;
+      
+      if (data?.audioData) {
+        const audioBlob = new Blob(
+          [Uint8Array.from(atob(data.audioData), c => c.charCodeAt(0))],
+          { type: 'audio/wav' }
+        );
+        const audioUrl = URL.createObjectURL(audioBlob);
+        
+        // Update message with audio URL
+        setMessages(prev => prev.map(m => 
+          m.text === text && m.role === 'ai' ? { ...m, audioUrl } : m
+        ));
+        
+        // Play audio
+        const audio = new Audio(audioUrl);
+        audioQueueRef.current.push(audio);
+        
+        if (!isPlayingRef.current) {
+          playNextAudio();
+        }
+        
+        addLog(`TTS Complete: ${ttsLatency}ms`);
+        setConnectionStatus(prev => ({ ...prev, tts: 'ready' }));
+      }
+    } catch (error: any) {
+      console.error('TTS Error:', error);
+      addLog(`TTS Error: ${error.message}`);
+      setConnectionStatus(prev => ({ ...prev, sarvam: 'error' }));
+      toast.error('Text-to-speech failed. Continuing in text-only mode.');
+    }
+  }, [settings, addLog]);
+
+  // Play audio queue
+  const playNextAudio = useCallback(() => {
+    if (audioQueueRef.current.length === 0) {
+      isPlayingRef.current = false;
+      return;
+    }
+    
+    isPlayingRef.current = true;
+    const audio = audioQueueRef.current.shift()!;
+    audio.onended = playNextAudio;
+    audio.play().catch(console.error);
+  }, []);
+
+  // Stop session
+  const stopSession = useCallback(async () => {
+    if (vadIntervalRef.current) {
+      clearInterval(vadIntervalRef.current);
+      vadIntervalRef.current = null;
+    }
+    if (silenceTimeoutRef.current) {
+      clearTimeout(silenceTimeoutRef.current);
+      silenceTimeoutRef.current = null;
+    }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      mediaRecorderRef.current.stop();
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close();
+    }
+    
+    // Handle early disconnect (refund credits if within 3 minutes)
+    await endInterview();
+    
+    setIsSessionActive(false);
+    setIsRecording(false);
+    setConnectionStatus(prev => ({ ...prev, deepgram: 'disconnected' }));
+    addLog('Session stopped');
+  }, [addLog, endInterview]);
+
+  // End session and generate report
+  const endAndGenerateReport = useCallback(async () => {
+    stopSession();
+    
+    if (messages.length === 0) {
+      toast.error('No conversation to analyze');
+      return;
+    }
+    
+    try {
+      addLog('Generating interview report...');
+      toast.loading('Generating your interview report...');
+      
+      const { data, error } = await supabase.functions.invoke('interviewer-report', {
+        body: {
+          messages: messages.map(m => ({ role: m.role, content: m.text, timestamp: m.timestamp })),
+          settings,
+          user_plan: subscription?.plan || 'free',
+          duration_minutes: sessionStartTime 
+            ? Math.round((Date.now() - sessionStartTime.getTime()) / 60000) 
+            : 0
+        }
+      });
+      
+      if (error) throw error;
+
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to generate report');
+      }
+      
+      toast.dismiss();
+      toast.success('Interview report generated successfully!');
+      addLog('Report generated and saved');
+      
+      // Navigate to interview history
+      navigate('/interview-history');
+      
+    } catch (error: any) {
+      console.error('Report generation error:', error);
+      toast.dismiss();
+      toast.error('Failed to generate report');
+      addLog(`Report Error: ${error.message}`);
+    }
+  }, [messages, settings, sessionStartTime, stopSession, addLog, navigate, subscription]);
+
+  // Keep ref updated for auto-end callback
+  useEffect(() => {
+    endAndGenerateReportRef.current = endAndGenerateReport;
+  }, [endAndGenerateReport]);
+
+  // Start interview from setup form - SINGLE ENTRY POINT for starting interviews
+  // This is the ONLY function that should trigger credit deduction and session start
+  const handleStartFromSetup = useCallback(async () => {
+    // Prevent duplicate clicks
+    if (isStartingInterview || isSessionActive) {
+      addLog('Start already in progress or session active');
+      return;
+    }
+    
+    setIsStartingInterview(true);
+    try {
+      // Deduct credit before starting
+      const hasCredit = await deductCreditForStart('voice-interviewer');
+      if (!hasCredit) {
+        toast.error('No credits remaining. Please upgrade your plan.');
+        navigate('/payments');
+        return;
+      }
+
+      // Start the session
+      await startSession();
+      
+      // Hide setup form and show interview interface
+      setShowSetupForm(false);
+      
+      // Get initial AI question after session is started
+      await getAIResponse(true);
+      
+    } catch (error) {
+      console.error('Failed to start interview:', error);
+      toast.error('Failed to start interview. Please try again.');
+    } finally {
+      setIsStartingInterview(false);
+    }
+  }, [deductCreditForStart, navigate, isStartingInterview, isSessionActive, startSession, addLog, getAIResponse]);
+
+  // Send manual text message
+  const sendTextMessage = useCallback(async (text: string) => {
+    if (!text.trim()) return;
+    
+    const userMessage: Message = {
+      id: generateId(),
+      role: 'user',
+      text: text.trim(),
+      timestamp: new Date()
+    };
+    setMessages(prev => [...prev, userMessage]);
+    
+    addLog(`Manual input: "${text.trim()}"`);
+    await getAIResponse(false);
+  }, [getAIResponse, addLog]);
+
+  // Ask next question
+  const askNextQuestion = useCallback(async () => {
+    addLog('Requesting next question...');
+    await getAIResponse(false);
+  }, [getAIResponse, addLog]);
+
+  // Replay TTS for a message
+  const replayAudio = useCallback((audioUrl: string) => {
+    if (!audioUrl) return;
+    const audio = new Audio(audioUrl);
+    audio.play().catch(console.error);
+    addLog('Replaying audio');
+  }, [addLog]);
+
+  // Handle sign out
+  const handleSignOut = async () => {
+    stopSession();
+    await signOut();
+    navigate('/');
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      stopSession();
+    };
+  }, [stopSession]);
+
+
+  return (
+    <ProtectedRoute>
+      <Layout>
+        <div className="min-h-screen bg-background">
+          <InterviewerPageHeader 
+            isSessionActive={isSessionActive}
+            connectionStatus={connectionStatus}
+            onSignOut={handleSignOut}
+          />
+          
+          <div className="max-w-[1800px] mx-auto px-6 py-10">
+            {/* Setup Form - shown before interview starts */}
+            {showSetupForm && (
+              <motion.div
+                initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                transition={{ duration: 0.7, ease: EASE }}
+              >
+                <InterviewSetupForm
+                  settings={settings}
+                  onSettingsChange={setSettings}
+                  onStartInterview={handleStartFromSetup}
+                  isLoading={isStartingInterview}
+                />
+              </motion.div>
+            )}
+
+            {/* Interview Interface - shown after setup is complete */}
+            {!showSetupForm && (
+              <>
+                {/* Timer — fixed at top */}
+                {isSessionActive && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="fixed left-1/2 top-20 z-50 -translate-x-1/2"
+                  >
+                    {timeRemaining <= 60000 ? (
+                      <div className="flex items-center gap-2 rounded-full bg-destructive px-4 py-2 text-destructive-foreground shadow-soft">
+                        <Clock className="h-4 w-4" strokeWidth={1.75} />
+                        <span className="font-metric text-lg font-semibold">{formattedTimeRemaining}</span>
+                        <span className="text-sm opacity-80">remaining</span>
+                      </div>
+                    ) : (
+                      <StatusPill tone={timeRemaining <= 180000 ? 'warning' : 'neutral'}>
+                        <Clock className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        <span className="font-metric text-sm font-semibold">{formattedTimeRemaining}</span>
+                        <span className="text-muted-foreground">remaining</span>
+                      </StatusPill>
+                    )}
+                  </motion.div>
+                )}
+
+                {/* Recording indicator */}
+                {isRecording && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="fixed bottom-8 left-1/2 z-50 -translate-x-1/2"
+                  >
+                    <StatusPill tone="live" className="px-4 py-2">
+                      <span className="font-body font-medium">Recording…</span>
+                    </StatusPill>
+                  </motion.div>
+                )}
+
+                {/* Processing indicator */}
+                {isProcessingAudio && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    className="fixed bottom-8 left-1/2 z-50 -translate-x-1/2"
+                  >
+                    <StatusPill className="px-4 py-2">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+                      <span className="font-body font-medium">Processing speech…</span>
+                    </StatusPill>
+                  </motion.div>
+                )}
+
+                <div className="grid grid-cols-12 gap-8">
+                  {/* Left Panel - Controls */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    transition={{ duration: 0.7, ease: EASE, delay: 0 }}
+                    className="col-span-12 lg:col-span-3"
+                  >
+                    <InterviewerControlPanel
+                      isSessionActive={isSessionActive}
+                      isStartingInterview={isStartingInterview}
+                      isMicEnabled={isMicEnabled}
+                      isSpeakerEnabled={isSpeakerEnabled}
+                      isPushToTalk={isPushToTalk}
+                      isPushToTalkActive={isPushToTalkActive}
+                      sessionStartTime={sessionStartTime}
+                      questionStartTime={questionStartTime}
+                      connectionStatus={connectionStatus}
+                      userPlan={subscription?.plan || 'free'}
+                      onStartSession={startSession}
+                      onStopSession={stopSession}
+                      onToggleMic={() => setIsMicEnabled(!isMicEnabled)}
+                      onToggleSpeaker={() => setIsSpeakerEnabled(!isSpeakerEnabled)}
+                      onTogglePushToTalk={() => setIsPushToTalk(!isPushToTalk)}
+                      onPushToTalkStart={handlePushToTalkStart}
+                      onPushToTalkEnd={handlePushToTalkEnd}
+                    />
+                  </motion.div>
+                  
+                  {/* Center Panel - Conversation */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    transition={{ duration: 0.7, ease: EASE, delay: 0.08 }}
+                    className="col-span-12 lg:col-span-5"
+                  >
+                    <div className="h-[calc(100vh-280px)] min-h-[500px]">
+                      <InterviewerConversationPanel
+                        messages={messages}
+                        currentInterimText={currentInterimText}
+                        isSessionActive={isSessionActive}
+                        onSendMessage={sendTextMessage}
+                        onAskNextQuestion={askNextQuestion}
+                        onRepeatQuestion={() => messages.length > 0 && replayAudio(messages[messages.length - 1].audioUrl || '')}
+                        onFlagQuestion={() => addLog('Question flagged')}
+                        onEndAndReport={endAndGenerateReport}
+                        onReplayAudio={replayAudio}
+                      />
+                    </div>
+                  </motion.div>
+                  
+                  {/* Right Panel - Transcript & Settings */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 16, filter: 'blur(8px)' }}
+                    animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                    transition={{ duration: 0.7, ease: EASE, delay: 0.16 }}
+                    className="col-span-12 lg:col-span-4"
+                  >
+                    <div className="h-[calc(100vh-280px)] min-h-[500px]">
+                      <InterviewerRightPanel
+                        transcriptChunks={transcriptChunks}
+                        currentInterimText={currentInterimText}
+                        settings={settings}
+                        eventLogs={eventLogs}
+                        latencyStats={latencyStats}
+                        onSettingsChange={setSettings}
+                      />
+                    </div>
+                  </motion.div>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </Layout>
+    </ProtectedRoute>
+  );
+};
+
+export default Interviewer;

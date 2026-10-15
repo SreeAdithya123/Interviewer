@@ -1,0 +1,362 @@
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================================
+   Vyoman — Editorial Structuralism design system
+   Cinematic dark hero · cool porcelain body · Clash Display + Plus Jakarta
+   ========================================================================= */
+
+@layer base {
+  :root {
+    /* Typography */
+    --font-headline: 'Clash Display', 'Space Grotesk', system-ui, sans-serif;
+    --font-body: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-metric: 'Space Grotesk', system-ui, sans-serif;
+    --font-resume-heading: 'Playfair Display', Georgia, serif;
+    --font-resume-heading-alt: 'Merriweather', Georgia, serif;
+    --font-resume-body: 'Lora', Georgia, serif;
+    --font-resume-body-alt: 'Source Serif 4', Georgia, serif;
+
+    /* Surfaces — cool porcelain */
+    --background: 232 40% 98%;
+    --foreground: 240 10% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 240 8% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 8% 9%;
+
+    /* Ink — the cinematic dark surface used by the hero + footer */
+    --ink: 240 12% 4%;
+    --ink-soft: 240 10% 8%;
+    --ink-foreground: 40 30% 96%;
+    --ink-muted: 240 6% 62%;
+
+    /* Primary — Neural Indigo */
+    --primary: 244 66% 58%;
+    --primary-foreground: 0 0% 100%;
+    --primary-hover: 244 60% 50%;
+
+    /* Secondary — Horizon Sky */
+    --secondary: 202 88% 58%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Accent — Dawn Rose */
+    --accent: 342 80% 68%;
+    --accent-foreground: 0 0% 100%;
+
+    --muted: 232 24% 95%;
+    --muted-foreground: 240 6% 42%;
+
+    --destructive: 0 74% 58%;
+    --destructive-foreground: 0 0% 100%;
+
+    /* Hairlines */
+    --border: 240 12% 90%;
+    --input: 240 12% 90%;
+    --ring: 244 66% 58%;
+
+    --radius: 0.9rem;
+
+    /* Motion — physical spring-like curves */
+    --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+    --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-fluid: cubic-bezier(0.32, 0.72, 0, 1);
+
+    /* Diffused ambient elevation (no harsh drop shadows) */
+    --shadow-ambient:
+      0 1px 2px -1px hsl(240 24% 12% / 0.05),
+      0 10px 20px -12px hsl(240 24% 12% / 0.12),
+      0 34px 60px -30px hsl(240 24% 12% / 0.14);
+    --shadow-ambient-lg:
+      0 2px 4px -2px hsl(240 24% 12% / 0.06),
+      0 18px 36px -18px hsl(240 24% 12% / 0.16),
+      0 60px 100px -40px hsl(240 24% 12% / 0.22);
+
+    /* Sidebar (app shell — kept for compatibility) */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 240 8% 9%;
+    --sidebar-primary: 244 66% 58%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 40 16% 94%;
+    --sidebar-accent-foreground: 240 8% 9%;
+    --sidebar-border: 240 12% 90%;
+    --sidebar-ring: 244 66% 58%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'kern' 1, 'liga' 1, 'ss01' 1;
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Page-wide atmospheric tint — the "sky" carries on behind the light body.
+     Sits above the flat background, below content; shows through the
+     translucent alternating sections. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(46% 32% at 12% 4%, hsl(244 78% 62% / 0.09), transparent 70%),
+      radial-gradient(40% 30% at 92% 42%, hsl(315 80% 64% / 0.07), transparent 72%),
+      radial-gradient(48% 34% at 50% 100%, hsl(202 88% 60% / 0.07), transparent 72%);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-headline);
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    word-spacing: 0.12em;
+  }
+
+  h1 { @apply text-4xl lg:text-6xl; line-height: 1.04; }
+  h2 { @apply text-3xl lg:text-5xl; line-height: 1.07; }
+  h3 { @apply text-xl lg:text-2xl; line-height: 1.2; }
+  h4 { @apply text-lg lg:text-xl; line-height: 1.3; }
+
+  p { max-width: 68ch; }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.16);
+    color: hsl(var(--foreground));
+  }
+
+  /* Fixed film-grain — never attached to a scrolling container */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    pointer-events: none;
+    opacity: 0.035;
+    mix-blend-mode: multiply;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.82' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+@layer utilities {
+  .font-headline { font-family: var(--font-headline); word-spacing: 0.12em; }
+  .font-body { font-family: var(--font-body); }
+  .font-metric { font-family: var(--font-metric); }
+  .font-resume-heading { font-family: var(--font-resume-heading); }
+  .font-resume-heading-alt { font-family: var(--font-resume-heading-alt); }
+  .font-resume-body { font-family: var(--font-resume-body); }
+  .font-resume-body-alt { font-family: var(--font-resume-body-alt); }
+
+  .tracking-headline { letter-spacing: -0.018em; }
+  .tracking-title { letter-spacing: -0.012em; }
+  .tracking-button { letter-spacing: 0.01em; }
+  .tracking-label { letter-spacing: 0.24em; }
+
+  .leading-headline { line-height: 1.02; }
+  .leading-title { line-height: 1.08; }
+  .leading-subheading { line-height: 1.25; }
+  .leading-body { line-height: 1.62; }
+
+  .text-display {
+    font-family: var(--font-headline);
+    font-size: clamp(2.75rem, 7vw, 5.75rem);
+    line-height: 1.0;
+    letter-spacing: -0.02em;
+    word-spacing: 0.04em;
+    font-weight: 600;
+  }
+
+  .text-metric {
+    font-family: var(--font-metric);
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  /* Multi-colour spectrum — emphasis words. Indigo → violet → fuchsia → pink
+     → orange, slowly panning. Reduced-motion holds it still. */
+  .text-spectrum {
+    background-image: linear-gradient(
+      100deg,
+      #4f46e5 0%,
+      #7c3aed 24%,
+      #c026d3 46%,
+      #ec4899 68%,
+      #f97316 100%
+    );
+    background-size: 220% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+    animation: shimmer 10s linear infinite;
+  }
+  .text-spectrum-static {
+    background-image: linear-gradient(
+      100deg,
+      #4f46e5 0%,
+      #9333ea 40%,
+      #db2777 72%,
+      #f97316 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .text-spectrum { animation: none; background-size: 100% auto; }
+  }
+
+  /* Eyebrow tag */
+  .eyebrow {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-[10px] font-semibold uppercase;
+    letter-spacing: 0.24em;
+  }
+
+  /* -------------------------------------------------------------------------
+     Double-bezel (Doppelrand) — machined-hardware nesting for every panel
+     ------------------------------------------------------------------------- */
+  .bezel {
+    border-radius: 2rem;
+    padding: 0.4rem;
+    background:
+      linear-gradient(180deg, hsl(240 16% 92%), hsl(240 14% 86%));
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.8),
+      inset 0 0 0 1px hsl(240 20% 30% / 0.1),
+      0 1px 2px hsl(240 24% 12% / 0.04);
+  }
+  .bezel-core {
+    border-radius: calc(2rem - 0.4rem);
+    background: hsl(var(--card));
+    box-shadow:
+      inset 0 1px 1px hsl(0 0% 100% / 0.9),
+      inset 0 0 0 1px hsl(240 20% 30% / 0.06),
+      var(--shadow-ambient-lg);
+  }
+  .bezel--ink {
+    background: linear-gradient(180deg, hsl(240 10% 16%), hsl(240 12% 9%));
+    box-shadow:
+      inset 0 1px 0 hsl(0 0% 100% / 0.08),
+      inset 0 0 0 1px hsl(0 0% 0% / 0.4),
+      0 1px 2px hsl(240 24% 12% / 0.2);
+  }
+  .bezel--ink > .bezel-core {
+    background: hsl(var(--ink-soft));
+    box-shadow:
+      inset 0 1px 1px hsl(0 0% 100% / 0.06),
+      inset 0 0 0 1px hsl(0 0% 100% / 0.06),
+      0 40px 80px -40px hsl(240 60% 4% / 0.8);
+  }
+
+  .glow-border { @apply border border-primary/15 rounded-2xl; }
+  .glow-border:focus-within {
+    @apply border-primary/60;
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.12);
+  }
+
+  .hover-scale {
+    transition: transform 0.4s var(--ease-out-quint);
+  }
+  .hover-scale:hover { transform: scale(1.03); }
+
+  /* Aurora mesh field for the cinematic hero */
+  .aurora {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(80px);
+    will-change: transform;
+  }
+
+  .grain-fixed {
+    position: fixed;
+    inset: 0;
+    z-index: 55;
+    pointer-events: none;
+    opacity: 0.06;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23g)'/%3E%3C/svg%3E");
+  }
+
+  .btn-primary {
+    @apply bg-primary text-primary-foreground font-medium rounded-full px-6 py-3;
+    font-family: var(--font-body);
+    letter-spacing: 0.01em;
+    transition: transform 0.5s var(--ease-out-quint), box-shadow 0.5s var(--ease-out-quint);
+    box-shadow: 0 10px 30px -10px hsl(var(--primary) / 0.5);
+  }
+  .btn-primary:hover { transform: translateY(-1px); }
+  .btn-primary:active { transform: scale(0.985); }
+
+  .btn-secondary {
+    @apply bg-transparent text-foreground font-medium rounded-full px-6 py-3;
+    border: 1px solid hsl(240 12% 12% / 0.14);
+    font-family: var(--font-body);
+    transition: background 0.4s var(--ease-out-quint), transform 0.4s var(--ease-out-quint);
+  }
+  .btn-secondary:hover { background: hsl(240 12% 12% / 0.04); }
+
+  .input-field {
+    @apply bg-card rounded-2xl px-4 py-3;
+    border: 1px solid hsl(240 12% 12% / 0.12);
+    font-family: var(--font-body);
+    transition: border-color 0.3s var(--ease-out-quint), box-shadow 0.3s var(--ease-out-quint);
+  }
+  .input-field:focus {
+    outline: none;
+    border-color: hsl(var(--primary) / 0.6);
+    box-shadow: 0 0 0 4px hsl(var(--primary) / 0.12);
+  }
+}
+
+@layer utilities {
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes aurora-drift {
+    0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+    33% { transform: translate3d(6%, -4%, 0) scale(1.08); }
+    66% { transform: translate3d(-4%, 5%, 0) scale(0.96); }
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  .animate-fade-in { animation: fade-in 0.4s var(--ease-out-quint) both; }
+  .animate-scale-in { animation: scale-in 0.3s var(--ease-out-quint) both; }
+  .animate-aurora { animation: aurora-drift 24s ease-in-out infinite; }
+  .animate-marquee { animation: marquee 38s linear infinite; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-aurora,
+    .animate-marquee { animation: none; }
+    html { scroll-behavior: auto; }
+  }
+}
