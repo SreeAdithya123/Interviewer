@@ -1,22 +1,38 @@
-// Phase 0 placeholder only. This is NOT the real landing page — Phase 2
-// ports Navbar/Hero/Footer/etc. from reference/lovable-site/src/components/.
-// This page exists purely to prove the design tokens (colors, fonts, radius)
-// ported into globals.css + tailwind.config.ts are wired correctly.
+import { MotionConfig } from "framer-motion";
+import Navbar from "@/components/marketing/Navbar";
+import Hero from "@/components/marketing/Hero";
+import ProductSection from "@/components/marketing/ProductSection";
+import PhilosophySection from "@/components/marketing/PhilosophySection";
+import Features from "@/components/marketing/Features";
+import TrustSection from "@/components/marketing/TrustSection";
+import Pricing from "@/components/marketing/Pricing";
+import Footer from "@/components/marketing/Footer";
+
+// The real landing page (BUILD_SPEC Part 4.9), replacing the Phase 0
+// placeholder. Composition mirrors reference/lovable-site/src/pages/Index.tsx
+// minus the CommunitySection and CareersSection, which the spec says to drop
+// until they have real content, plus the new TrustSection the spec calls for.
+//
+// MotionConfig with reducedMotion="user" makes every framer-motion animation
+// in the tree below (Reveal, Hero's entrance motion, the Features/Pricing
+// whileInView reveals, GuidingPrinciplesIndex) automatically honour the
+// visitor's prefers-reduced-motion setting, on top of the manual
+// useReducedMotion() checks some components already do.
 export default function Home() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 bg-ink px-6 py-24 text-center">
-      <span className="eyebrow bg-ink-soft text-ink-muted">Vyoman Interviewer</span>
-      <h1 className="font-headline text-ink-foreground">
-        Design system <span className="text-spectrum">wired up</span>.
-      </h1>
-      <p className="font-body text-ink-muted">
-        Plus Jakarta Sans body copy, Clash Display headlines, and the Neural
-        Indigo primary color — scaffolded in Phase 0 so Phase 2 can build the
-        real landing page on top of it.
-      </p>
-      <button type="button" className="btn-primary">
-        Start a mock interview
-      </button>
-    </main>
+    <MotionConfig reducedMotion="user">
+      <div className="relative min-h-screen bg-background">
+        <Navbar />
+        <main>
+          <Hero />
+          <ProductSection />
+          <PhilosophySection />
+          <Features />
+          <TrustSection />
+          <Pricing />
+        </main>
+        <Footer />
+      </div>
+    </MotionConfig>
   );
 }
