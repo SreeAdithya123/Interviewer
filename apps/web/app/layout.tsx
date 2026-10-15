@@ -25,7 +25,11 @@ export const metadata: Metadata = {
     "AI-powered interview practice for Indian college students — ace interviews, apply faster, and land offers with confidence.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="en"
