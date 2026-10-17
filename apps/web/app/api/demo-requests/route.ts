@@ -69,15 +69,18 @@ function validate(body: unknown): ValidationResult {
 
 async function insertDemoRequest(value: DemoRequestPayload) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  // The anon/publishable key is enough here: demo_requests has an explicit
+  // RLS policy allowing `anon` to insert (it's the public "Book a Demo"
+  // form), so this route doesn't need the more powerful service-role key.
+  const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-  if (!url || !serviceRoleKey) {
+  if (!url || !publishableKey) {
     throw new Error(
-      "Supabase is not configured: NEXT_PUBLIC_SUPABASE_URL and/or SUPABASE_SERVICE_ROLE_KEY are missing from the environment.",
+      "Supabase is not configured: NEXT_PUBLIC_SUPABASE_URL and/or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY are missing from the environment.",
     );
   }
 
-  const supabase = createClient(url, serviceRoleKey, {
+  const supabase = createClient(url, publishableKey, {
     auth: { persistSession: false },
   });
 
