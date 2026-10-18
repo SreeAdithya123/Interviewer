@@ -1,5 +1,18 @@
 # Progress
 
+## Phase 1: 4 of 5 provider keys live and verified; R2 still missing
+
+The founder provided Groq, Gemini, Sarvam, and an Upstash key. Each was verified with a real, minimal call before being trusted — not just pasted into `.env` on faith:
+
+- **Groq**: `GET /openai/v1/models` with the key as a Bearer token → 200 OK.
+- **Gemini**: `GET /v1beta/models?key=...` → 200 OK. Worth noting: the key's format (`AQ.Ab8RN6Ix...`) doesn't match the classic `AIzaSy...` Google AI Studio pattern — confirmed it's simply a newer, equally valid key format via this real successful call, not a mistake.
+- **Sarvam**: no free verification endpoint exists in their API (checked their docs directly) — the only real check is a billed call, so sent the smallest possible TTS request (`"hi"`, ~negligible fractional-paisa cost) to `POST /text-to-speech` and got real base64 audio back with a 200.
+- **Upstash**: the value given was an account-level Developer API key (Basic Auth, `email:key`), **not** a per-database REST URL+token pair the app actually needs — confirmed via Upstash's docs and by listing databases on the account (zero existed). Used that management key once to create a real Global Redis database (`vyoman-interviewer`, primary region `ap-south-1`/Mumbai, matching the rest of the stack) via `POST /v2/redis/database`, then verified the resulting `rest_token` for real with `GET /ping` → `PONG`. The account-level key itself was not stored in `.env` — only the resulting per-database `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` are, which is what the engine's Redis client actually needs.
+
+All four now live in `services/engine/.env` (gitignored). **Still missing: Cloudflare R2** (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`) — Phase 1's real cost/latency test needs this too, since it uploads interview audio to R2.
+
+A background workflow is concurrently building the actual engine code (provider clients, interview loop, cost tracking, `eval/cost_report.py`) against these — see the Phase 1 engine section below once it lands.
+
 ## Cross-cutting: real transactional email, live — done
 
 Supabase Auth was sending OTP emails through its built-in mailer, which turned out to be capped at **2 emails/hour** on this project (confirmed via the Supabase Management API's `config/auth` endpoint, `rate_limit_email_sent: 2`) — explaining why login testing kept failing to deliver. Fixed for real, not just patched around:
