@@ -73,6 +73,7 @@ class NextTurnResponse(BaseModel):
     question_bank_id: str | None = None
     is_follow_up: bool = False
     follow_up_of_turn_id: str | None = None
+    question_audio_url: str | None = None
 
 
 class SubmitAnswerResponse(BaseModel):

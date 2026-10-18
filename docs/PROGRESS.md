@@ -1,5 +1,13 @@
 # Progress
 
+## Phase 1: question audio (TTS) wired into the real turn loop
+
+**Built**: every new turn (question-bank or follow-up) now gets real audio. `app/providers/r2.py` gained `put_object_bytes` (server-side upload — the engine, not the browser, owns this object). `engine.py`'s `_write_turn` calls a new `_get_or_synthesize_question_audio`: hash(text, voice) → check `tts_cache` → reuse on a hit (bump `hit_count`), else call Sarvam's batch `synthesize_speech`, upload to R2, log a real `tts` `usage_events` row, insert the `tts_cache` row. `interview_turns.question_audio_key` is now actually set. `NextTurnResult`/`NextTurnResponse` gained `question_audio_url` (a freshly signed R2 download URL, generated from the stored key — never stored itself, since URLs expire and keys don't). `InterviewRoomClient.tsx` autoplays it when a turn loads.
+
+**Verified**: `tests/interview/test_live_db.py` (the one test with no mocked provider calls except the paid evaluation one) now asserts `question_audio_url is not None` and a real `tts`-feature usage event — so this ran for real, once, against live Sarvam + live R2 + the live database, not just mocked. `pytest` (77 tests, fixture extended once so every other test gets safe/fast fakes automatically rather than each wiring its own) and `ruff check` exit 0; `tsc --noEmit` exits 0 in `apps/web`.
+
+**Still pending**: the streaming Sarvam client (`synthesize_speech_streaming`) isn't used here — this wiring uses the simpler, already-fully-tested batch client; streaming remains a later perceived-latency optimization, not required for the feature to work correctly. No UI control to replay a question's audio.
+
 ## Phase 1: all 5 provider keys now live — a real interview was driven end to end against real providers and the live database
 
 **What was built**

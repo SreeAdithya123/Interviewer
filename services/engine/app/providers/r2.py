@@ -128,3 +128,22 @@ async def get_object_bytes(key: str) -> bytes:
         return response["Body"].read()
 
     return await asyncio.to_thread(_get)
+
+
+async def put_object_bytes(key: str, data: bytes, *, content_type: str) -> None:
+    """Write bytes to R2 directly, server-side — e.g. a fresh TTS cache
+    miss, synthesized once and stored here so no later interview ever
+    pays to re-synthesize the same (text, voice) pair. Unlike an answer
+    clip (browser uploads straight to R2 via `generate_upload_url`), this
+    object only ever exists because the engine itself created it, so the
+    engine writing it directly — no presigned URL round trip — is simpler
+    and correct, not a shortcut.
+    """
+
+    def _put() -> None:
+        try:
+            _client().put_object(Bucket=_bucket_name(), Key=key, Body=data, ContentType=content_type)
+        except ClientError as exc:
+            raise R2Error(f"failed to write R2 object {key!r}: {exc}") from exc
+
+    await asyncio.to_thread(_put)

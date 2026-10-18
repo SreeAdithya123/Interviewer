@@ -16,6 +16,7 @@ the end, in FK-safe order, whether the test passes or fails.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import uuid
 
 from app.costs.tracking import compute_cost_paise
@@ -69,7 +70,14 @@ async def test_engine_writes_real_rows_against_the_live_supabase_project(monkeyp
                     "company_type": scoped_role,
                     "role": scoped_role,
                     "difficulty": "easy",
-                    "question_text": "(pytest live-db smoke test) Tell me about yourself.",
+                    # Suffixed, not a fixed literal: _get_or_synthesize_question_audio
+                    # caches TTS audio by hash(text, voice) in the real,
+                    # shared `tts_cache` table (not scoped to this test's
+                    # interview_id) -- a fixed literal here would cache-hit
+                    # on every run after the first, silently skipping the
+                    # real Sarvam call and the usage_events row this test
+                    # asserts on below.
+                    "question_text": f"(pytest live-db smoke test {suffix}) Tell me about yourself.",
                     "status": "reviewed",
                 }
             )
@@ -104,7 +112,8 @@ async def test_engine_writes_real_rows_against_the_live_supabase_project(monkeyp
         assert next_turn.stage == "intro"
         assert next_turn.question_source == "question_bank"
         assert next_turn.question_bank_id == question_id
-        assert next_turn.question_text == "(pytest live-db smoke test) Tell me about yourself."
+        assert next_turn.question_text == f"(pytest live-db smoke test {suffix}) Tell me about yourself."
+        assert next_turn.question_audio_url is not None
 
         interview_row = (
             await client.table("interviews").select("*").eq("id", interview_id).execute()
@@ -164,18 +173,27 @@ async def test_engine_writes_real_rows_against_the_live_supabase_project(monkeyp
         assert len(weak_area_rows) == 1
         assert weak_area_rows[0]["skill"] == "pytest-smoke-skill"
 
+        # Two real usage_events now: the mocked-token-count Gemini
+        # evaluation call, and the real Sarvam TTS call get_next_turn made
+        # to synthesize the intro question's own audio (TTS wiring; see
+        # docs/PROGRESS.md). The TTS cost is real and not predictable
+        # here, so it's read back from its own row rather than hardcoded.
         usage_rows = (
             await client.table("usage_events")
             .select("*")
             .eq("interview_id", interview_id)
             .execute()
         ).data
-        assert len(usage_rows) == 1
-        expected_cost = compute_cost_paise(
+        assert len(usage_rows) == 2
+        gemini_events = [r for r in usage_rows if r["feature"] == "interview"]
+        tts_events = [r for r in usage_rows if r["feature"] == "tts"]
+        assert len(gemini_events) == 1
+        assert len(tts_events) == 1
+        expected_gemini_cost = compute_cost_paise(
             provider="gemini", model="gemini-4-argon", units={"input_tokens": 10, "output_tokens": 5}
         )
-        assert usage_rows[0]["cost_paise"] == expected_cost
-        assert interview_row["total_cost_paise"] == expected_cost
+        assert gemini_events[0]["cost_paise"] == expected_gemini_cost
+        assert interview_row["total_cost_paise"] == expected_gemini_cost + tts_events[0]["cost_paise"]
 
     finally:
         # Clean up everything created, in FK-safe (children-first) order.
@@ -196,3 +214,13 @@ async def test_engine_writes_real_rows_against_the_live_supabase_project(monkeyp
         if template_id:
             with contextlib.suppress(Exception):
                 await client.table("interview_templates").delete().eq("id", template_id).execute()
+        # tts_cache is a real, shared cache (not scoped to this test's own
+        # rows), but this test's own entry is cheap and easy to name
+        # exactly -- same hash(text, voice) key _get_or_synthesize_question_audio
+        # computed -- so it's cleaned up too rather than left to accumulate
+        # across every test run.
+        with contextlib.suppress(Exception):
+            text_hash = hashlib.sha256(
+                f"(pytest live-db smoke test {suffix}) Tell me about yourself.".encode()
+            ).hexdigest()
+            await client.table("tts_cache").delete().eq("cache_key", f"shubh:{text_hash}").execute()

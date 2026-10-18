@@ -22,6 +22,7 @@ one yet (see docs/DECISIONS.md).
 
 from __future__ import annotations
 
+import hashlib
 import random
 import time
 from dataclasses import dataclass
@@ -30,7 +31,7 @@ from typing import Any
 
 from app.costs.tracking import compute_cost_paise, log_usage_event
 from app.db import get_client
-from app.providers import gemini
+from app.providers import gemini, r2, sarvam
 from app.providers.stt import transcribe_with_fallback
 
 EVALUATION_PROMPT_VERSION = "interview_evaluation_v1"
@@ -38,6 +39,13 @@ EVALUATION_PROMPT_VERSION = "interview_evaluation_v1"
 # Sarvam's own vocabulary-hint cap (app/providers/sarvam.py); kept in sync
 # here since the same hint list is passed to both STT providers.
 _MAX_VOCABULARY_HINT_TERMS = 50
+
+# One fixed voice for every question/follow-up (BUILD_SPEC doesn't ask for
+# voice selection); part of the TTS cache key, same as every other call
+# site that calls Sarvam TTS in this codebase (app/providers/sarvam.py's
+# own tests/callers default to "shubh").
+_QUESTION_TTS_VOICE = "shubh"
+_QUESTION_TTS_LANGUAGE_CODE = "en-IN"
 
 
 class InterviewEngineError(Exception):
@@ -96,6 +104,7 @@ class NextTurnResult:
     question_bank_id: str | None = None
     is_follow_up: bool = False
     follow_up_of_turn_id: str | None = None
+    question_audio_url: str | None = None
 
 
 @dataclass(frozen=True)
@@ -276,6 +285,8 @@ async def get_next_turn(interview_id: str) -> NextTurnResult:
                         question_source="follow_up",
                         is_follow_up=True,
                         follow_up_of_turn_id=last_primary["id"],
+                        user_id=interview["user_id"],
+                        college_id=interview.get("college_id"),
                     )
 
     if len(primary_turns) < stage_config.question_count:
@@ -290,6 +301,8 @@ async def get_next_turn(interview_id: str) -> NextTurnResult:
                 question_text=question["question_text"],
                 question_source="question_bank",
                 question_bank_id=question["id"],
+                user_id=interview["user_id"],
+                college_id=interview.get("college_id"),
             )
         # Question bank exhausted for this stage/filter combination: treat
         # the stage as done rather than getting stuck:
@@ -696,6 +709,69 @@ async def _maybe_generate_followup(
     return result.follow_up_question
 
 
+async def _get_or_synthesize_question_audio(
+    client: Any, text: str, *, interview_id: str, user_id: str, college_id: str | None
+) -> str:
+    """Returns an R2 object key with this question/follow-up's audio,
+    reusing a `tts_cache` row keyed by hash(text, voice) when one already
+    exists (BUILD_SPEC Part 4.5 step 3: "question audio plays ... from TTS
+    cache when available") instead of re-synthesizing and re-paying Sarvam
+    for text this engine has already spoken before -- the question bank's
+    own questions get asked across many different interviews, so this is
+    the main real cost lever in the whole per-interview budget (see
+    docs/PROGRESS.md's cost breakdown). Follow-ups are LLM-generated and
+    essentially never repeat verbatim, so they're still cached (consistent
+    behavior, zero cost either way) but never actually hit.
+    """
+    text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    cache_key = f"{_QUESTION_TTS_VOICE}:{text_hash}"
+
+    existing = await client.table("tts_cache").select("*").eq("cache_key", cache_key).execute()
+    if existing.data:
+        cached = existing.data[0]
+        await (
+            client.table("tts_cache")
+            .update({"hit_count": cached["hit_count"] + 1, "last_used_at": datetime.now(UTC).isoformat()})
+            .eq("cache_key", cache_key)
+            .execute()
+        )
+        return cached["audio_key"]
+
+    speech = await sarvam.synthesize_speech(text, _QUESTION_TTS_VOICE, language_code=_QUESTION_TTS_LANGUAGE_CODE)
+    audio_key = f"tts-cache/{text_hash}.wav"
+    await r2.put_object_bytes(audio_key, speech.audio_bytes, content_type="audio/wav")
+
+    cost_paise = compute_cost_paise(
+        provider="sarvam", model=speech.model_id, units={"characters": speech.characters}
+    )
+    await log_usage_event(
+        feature="tts",
+        provider="sarvam",
+        model=speech.model_id,
+        units={"characters": speech.characters},
+        cost_paise=cost_paise,
+        interview_id=interview_id,
+        user_id=user_id,
+        college_id=college_id,
+    )
+    await (
+        client.table("tts_cache")
+        .insert(
+            {
+                "cache_key": cache_key,
+                "text_hash": text_hash,
+                "voice": _QUESTION_TTS_VOICE,
+                "audio_key": audio_key,
+                "characters": speech.characters,
+                "provider": "sarvam",
+                "hit_count": 0,
+            }
+        )
+        .execute()
+    )
+    return audio_key
+
+
 async def _write_turn(
     client: Any,
     interview_id: str,
@@ -704,10 +780,15 @@ async def _write_turn(
     stage: str,
     question_text: str,
     question_source: str,
+    user_id: str,
+    college_id: str | None,
     question_bank_id: str | None = None,
     is_follow_up: bool = False,
     follow_up_of_turn_id: str | None = None,
 ) -> NextTurnResult:
+    audio_key = await _get_or_synthesize_question_audio(
+        client, question_text, interview_id=interview_id, user_id=user_id, college_id=college_id
+    )
     row = {
         "interview_id": interview_id,
         "turn_number": existing_turn_count + 1,
@@ -717,6 +798,7 @@ async def _write_turn(
         "question_bank_id": question_bank_id,
         "is_follow_up": is_follow_up,
         "follow_up_of_turn_id": follow_up_of_turn_id,
+        "question_audio_key": audio_key,
     }
     res = await client.table("interview_turns").insert(row).execute()
     return _turn_row_to_next_turn_result(res.data[0])
@@ -727,7 +809,10 @@ def _turn_row_to_next_turn_result(turn: dict[str, Any]) -> NextTurnResult:
     inserted `interview_turns` row (`_write_turn`) or an existing one being
     re-asked verbatim (`get_next_turn`'s not-yet-answered guard above) --
     one place that knows the column -> field mapping, so the two call
-    sites can't drift apart on it."""
+    sites can't drift apart on it. Signing a fresh download URL from the
+    stored key (rather than storing the URL itself) is cheap -- pure local
+    HMAC signing, no network call -- and URLs expire while the key doesn't."""
+    audio_key = turn.get("question_audio_key")
     return NextTurnResult(
         interview_finished=False,
         turn_id=turn["id"],
@@ -737,6 +822,7 @@ def _turn_row_to_next_turn_result(turn: dict[str, Any]) -> NextTurnResult:
         question_source=turn["question_source"],
         question_bank_id=turn.get("question_bank_id"),
         is_follow_up=turn["is_follow_up"],
+        question_audio_url=r2.generate_download_url(audio_key) if audio_key else None,
         follow_up_of_turn_id=turn.get("follow_up_of_turn_id"),
     )
 

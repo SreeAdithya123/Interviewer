@@ -55,6 +55,7 @@ export interface EngineNextTurn {
   question_bank_id: string | null;
   is_follow_up: boolean;
   follow_up_of_turn_id: string | null;
+  question_audio_url: string | null;
 }
 
 export interface EngineSubmitAnswerResult {

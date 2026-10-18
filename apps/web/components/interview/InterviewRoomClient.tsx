@@ -141,6 +141,13 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
       setCurrentTurn(next);
       setAnswerRemaining(MAX_ANSWER_SECONDS);
       setPhase("awaiting_recording");
+      if (next.question_audio_url) {
+        // Fire-and-forget, same as the ack clip: a blocked/rejected
+        // autoplay (rare, mic permission already granted earlier in the
+        // flow) just means the student reads the question text instead —
+        // never a reason to hold up the room.
+        void new Audio(next.question_audio_url).play().catch(() => {});
+      }
     },
     [finishNow],
   );

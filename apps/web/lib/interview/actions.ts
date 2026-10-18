@@ -92,6 +92,7 @@ export async function getNextTurn(interviewId: string): Promise<EngineNextTurn> 
         question_bank_id: null,
         is_follow_up: false,
         follow_up_of_turn_id: null,
+        question_audio_url: null,
       };
     }
     throw err;

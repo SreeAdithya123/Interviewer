@@ -24,7 +24,7 @@ from app.costs import tracking
 from app.interview import engine
 from app.providers import gemini
 from app.providers.stt import FallbackTranscriptionResult
-from app.providers.types import TranscriptionResult
+from app.providers.types import SpeechResult, TranscriptionResult
 from tests.interview.fakes import FakeClient
 
 INTERVIEW_ID = "11111111-1111-1111-1111-111111111111"
@@ -94,6 +94,26 @@ def make_question(**overrides) -> dict:
     return base
 
 
+async def _fake_synthesize_speech(text, voice, *, language_code="en-IN", pace=1.0):
+    return SpeechResult(
+        audio_bytes=b"fake-wav-bytes",
+        provider="sarvam",
+        model_id="bulbul:v3",
+        characters=len(text),
+        cost_paise=1,
+        latency_ms=5,
+        raw_response={},
+    )
+
+
+async def _fake_put_object_bytes(key, data, *, content_type):
+    return None
+
+
+def _fake_generate_download_url(key, *, expires_in=900):
+    return f"https://fake-r2.example/{key}"
+
+
 @pytest.fixture
 def fake_client(monkeypatch) -> FakeClient:
     client = FakeClient()
@@ -107,6 +127,12 @@ def fake_client(monkeypatch) -> FakeClient:
     # Patch both call sites directly instead.
     monkeypatch.setattr(engine, "get_client", _get_client)
     monkeypatch.setattr(tracking, "get_client", _get_client)
+    # Every new turn now synthesizes/caches question audio (TTS wiring) --
+    # faked here, once, so every test in this file gets safe, fast,
+    # network-free TTS/R2 behavior without each test wiring its own.
+    monkeypatch.setattr(engine.sarvam, "synthesize_speech", _fake_synthesize_speech)
+    monkeypatch.setattr(engine.r2, "put_object_bytes", _fake_put_object_bytes)
+    monkeypatch.setattr(engine.r2, "generate_download_url", _fake_generate_download_url)
     return client
 
 
@@ -193,6 +219,42 @@ async def test_first_call_starts_interview_and_asks_intro_question(fake_client, 
     assert interview_row["status"] == "in_progress"
     assert interview_row["current_stage"] == "intro"
     assert interview_row["started_at"] is not None
+
+    assert result.question_audio_url == "https://fake-r2.example/tts-cache/" + fake_client.tables["tts_cache"][0]["text_hash"] + ".wav"
+    cache_row = fake_client.tables["tts_cache"][0]
+    assert cache_row["hit_count"] == 0  # freshly synthesized, not reused
+    tts_events = [r for r in fake_client.tables["usage_events"] if r["feature"] == "tts"]
+    assert len(tts_events) == 1
+    assert tts_events[0]["provider"] == "sarvam"
+
+
+async def test_question_audio_is_cached_and_reused_across_interviews(fake_client, monkeypatch):
+    """The same question text (BUILD_SPEC Part 4.5 step 3: cached "by hash
+    of (text, voice)") must be synthesized once, not once per interview
+    that happens to ask it."""
+    call_count = 0
+    real_fake = engine.sarvam.synthesize_speech
+
+    async def _counting_fake(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return await real_fake(*args, **kwargs)
+
+    monkeypatch.setattr(engine.sarvam, "synthesize_speech", _counting_fake)
+
+    fake_client.seed("interviews", [make_interview(id="interview-a"), make_interview(id="interview-b")])
+    fake_client.seed("interview_templates", [TWO_STAGE_TEMPLATE])
+    fake_client.seed("question_bank", [make_question(stage="intro", question_text="Same question text.")])
+
+    first = await engine.get_next_turn("interview-a")
+    second = await engine.get_next_turn("interview-b")
+
+    assert call_count == 1  # second call reused the cache, never re-synthesized
+    assert second.question_audio_url == first.question_audio_url
+    assert len(fake_client.tables["tts_cache"]) == 1
+    assert fake_client.tables["tts_cache"][0]["hit_count"] == 1  # bumped on the second interview's reuse
+    tts_events = [r for r in fake_client.tables["usage_events"] if r["feature"] == "tts"]
+    assert len(tts_events) == 1  # only the real synthesis is metered, not the cache hit
 
 
 async def test_get_next_turn_re_asks_the_current_question_when_called_again_before_an_answer(
@@ -358,11 +420,16 @@ async def test_generates_a_follow_up_when_one_is_warranted(fake_client, monkeypa
     assert result.follow_up_of_turn_id == "turn-1"
     assert result.question_text == "What specifically did you build?"
 
-    # The follow-up call must be metered (BUILD_SPEC Part 5).
+    # Both the follow-up generation call and its own question audio must
+    # be metered (BUILD_SPEC Part 5).
     usage_rows = fake_client.tables.get("usage_events", [])
-    assert len(usage_rows) == 1
-    assert usage_rows[0]["provider"] == "gemini"
-    assert usage_rows[0]["feature"] == "interview"
+    assert len(usage_rows) == 2
+    gemini_events = [r for r in usage_rows if r["feature"] == "interview"]
+    tts_events = [r for r in usage_rows if r["feature"] == "tts"]
+    assert len(gemini_events) == 1
+    assert gemini_events[0]["provider"] == "gemini"
+    assert len(tts_events) == 1
+    assert tts_events[0]["provider"] == "sarvam"
     assert usage_rows[0]["cost_paise"] >= 0
 
 
