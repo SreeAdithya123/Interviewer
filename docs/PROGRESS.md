@@ -1,5 +1,13 @@
 # Progress
 
+## Phase 2: RLS isolation tested for real against the live database — PASS
+
+The last open Phase 2 acceptance criterion ("RLS tests proving a student cannot read another student's data and a college admin cannot read another college's data") had only ever been satisfied by reading the policy SQL, never actually run. Ran it for real: `set local role authenticated; set local request.jwt.claim.sub = '<uuid>'` (the standard way `auth.uid()` is tested directly in Postgres, since that's literally what it reads) against the live project, as a throwaway second college + college_admin, the two real student profiles, and the real platform_admin. Saved as `supabase/tests/rls_isolation_test.sql` so it's re-runnable, not a one-off.
+
+**Result: no cross-student or cross-college leak.** College B's admin saw 0 rows of the real college's interviews/resumes/reports/weak_areas (1 profile — their own). Student A couldn't see student B's profile or another user's interviews. Platform_admin correctly saw everything (RLS isn't over-restricting the one role meant to see it all).
+
+One false alarm worth recording honestly: a first pass showed a student account with 313 visible `usage_events` rows and briefly looked like a real leak. It wasn't — that account's id had been reused as this session's own curl-testing dummy user throughout the Phase 1 work, so those 313 rows genuinely were that account's own data. Confirmed by checking the real `user_id` distribution directly before concluding anything was wrong, not by assuming.
+
 ## Phase 1 CHECKPOINT (BUILD_SPEC Part 7): real go/no-go cost/latency result — PASS
 
 **The actual gate, run for real**: 5 fresh real interviews (hr/easy, technical/medium, behavioral/easy, mixed/medium, technical/hard — one user, synthetic silence audio per BUILD_SPEC's own allowance), driven end to end via the real HTTP routes against real Groq/Sarvam/Gemini/R2 and the live database, `finish`ed, then `eval/cost_report.py --hours 1`. 9 interviews fell in the window (these 5 plus earlier real ones from this session).
