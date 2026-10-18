@@ -41,7 +41,10 @@ export default function RootLayout({
       lang="en"
       className={`${plusJakartaSans.variable} ${spaceGrotesk.variable}`}
     >
-      <body>{children}</body>
+      {/* suppressHydrationWarning: browser extensions (Grammarly, Twilio, etc.)
+          inject attributes like data-gr-ext-installed onto <body> before React
+          hydrates, which otherwise logs a false-positive hydration mismatch. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
