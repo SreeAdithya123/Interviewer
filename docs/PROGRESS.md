@@ -1,5 +1,17 @@
 # Progress
 
+## Phase 1 CHECKPOINT (BUILD_SPEC Part 7): real go/no-go cost/latency result — PASS
+
+**The actual gate, run for real**: 5 fresh real interviews (hr/easy, technical/medium, behavioral/easy, mixed/medium, technical/hard — one user, synthetic silence audio per BUILD_SPEC's own allowance), driven end to end via the real HTTP routes against real Groq/Sarvam/Gemini/R2 and the live database, `finish`ed, then `eval/cost_report.py --hours 1`. 9 interviews fell in the window (these 5 plus earlier real ones from this session).
+
+- **Cost: mean ₹3.53/interview, median ₹3.46 — PASS** (target: under ₹15). Per-provider mean: gemini ₹0.42, groq ₹0.42, sarvam ₹2.69 (STT + the new TTS wiring combined).
+- **Latency: p50 901ms, p95 1229ms — PASS** (targets: p50 under 2500ms, p95 under 4000ms), across 126 turns with recorded latency.
+- **STT fallback: 0%** — Groq handled every transcription for real, no Sarvam fallback triggered.
+
+**Real bug fixed to get a trustworthy number**: `eval/cost_report.py`'s `fetch_usage_events` filtered `feature == 'interview'` only, silently excluding `feature='stt'` and `feature='tts'` rows entirely — meaning it only ever reported the Gemini slice of cost, undercounting real spend by more than half (STT+TTS are the bigger components). Fixed to query all three interview-tied feature values. Caught by actually reading the output against known real costs, not by a test — this script has no dedicated test coverage yet.
+
+Synthetic-silence costs/latencies are a real floor, not necessarily representative of real human answers (longer audio, more follow-ups) — the margin is large enough (₹3.53 vs ₹15, under half the latency budget) that this isn't a close call, but a mixed batch with some of the founder's own real-voice interviews (like the one earlier this session) would be a stronger confirmation before fully closing this checkpoint.
+
 ## Phase 1: question audio (TTS) wired into the real turn loop
 
 **Built**: every new turn (question-bank or follow-up) now gets real audio. `app/providers/r2.py` gained `put_object_bytes` (server-side upload — the engine, not the browser, owns this object). `engine.py`'s `_write_turn` calls a new `_get_or_synthesize_question_audio`: hash(text, voice) → check `tts_cache` → reuse on a hit (bump `hit_count`), else call Sarvam's batch `synthesize_speech`, upload to R2, log a real `tts` `usage_events` row, insert the `tts_cache` row. `interview_turns.question_audio_key` is now actually set. `NextTurnResult`/`NextTurnResponse` gained `question_audio_url` (a freshly signed R2 download URL, generated from the stored key — never stored itself, since URLs expire and keys don't). `InterviewRoomClient.tsx` autoplays it when a turn loads.

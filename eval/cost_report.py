@@ -176,11 +176,21 @@ def percentile(values: list[float], pct: float) -> float | None:
     return s[f] * (c - k) + s[c] * (k - f)
 
 
+#  Every usage_events row that can be tied to an interview (engine.py's
+# three real call sites: the Gemini follow-up/evaluation calls under
+# feature='interview', STT under feature='stt', TTS under feature='tts')
+# -- not just feature='interview' alone. That narrower filter was this
+# script's own original bug: it silently reported only the Gemini slice of
+# cost, undercounting real per-interview spend by more than half (STT and
+# TTS are the larger components; see docs/PROGRESS.md's cost breakdown).
+INTERVIEW_COST_FEATURES = ("interview", "stt", "tts")
+
+
 def fetch_usage_events(client: Any, since: datetime, until: datetime) -> list[dict[str, Any]]:
     response = (
         client.table("usage_events")
-        .select("id,interview_id,provider,cost_paise,created_at")
-        .eq("feature", "interview")
+        .select("id,interview_id,provider,cost_paise,created_at,feature")
+        .in_("feature", list(INTERVIEW_COST_FEATURES))
         .gte("created_at", since.isoformat())
         .lte("created_at", until.isoformat())
         .execute()
