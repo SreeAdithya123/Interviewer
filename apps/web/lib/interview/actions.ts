@@ -21,6 +21,7 @@
 
 import { getCurrentProfile } from "@/lib/auth/current-profile";
 import {
+  EngineError,
   engineCreateInterview,
   engineFinishInterview,
   engineGetNextTurn,
@@ -66,7 +67,35 @@ export async function createInterview(input: {
 
 export async function getNextTurn(interviewId: string): Promise<EngineNextTurn> {
   await requireSignedInProfile();
-  return engineGetNextTurn(interviewId);
+  try {
+    return await engineGetNextTurn(interviewId);
+  } catch (err) {
+    // 409 here means the engine's own InvalidInterviewStateError for an
+    // interview whose status is already 'completed'/'abandoned' (see
+    // services/engine/app/main.py's _raise_for_engine_error). From the
+    // room's perspective that's the same actionable outcome as a normal
+    // "interview_finished": go to the report — not a dead-end error with
+    // a "try again" button that would just 409 again every time. Real
+    // case this fixes: React's dev-mode double-invoked mount effect calls
+    // this twice; if the first call's side effect already finished the
+    // interview server-side before its result could be applied client-side
+    // (see InterviewRoomClient's mount-effect comment), the second call
+    // used to surface this as a raw, unrecoverable error.
+    if (err instanceof EngineError && err.status === 409) {
+      return {
+        interview_finished: true,
+        turn_id: null,
+        turn_number: null,
+        stage: null,
+        question_text: null,
+        question_source: null,
+        question_bank_id: null,
+        is_follow_up: false,
+        follow_up_of_turn_id: null,
+      };
+    }
+    throw err;
+  }
 }
 
 export async function submitAnswer(formData: FormData): Promise<EngineSubmitAnswerResult> {

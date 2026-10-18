@@ -610,23 +610,59 @@ def _parse_timestamp(value: str) -> datetime:
 async def _pick_question(
     client: Any, interview: dict[str, Any], stage: str, exclude_ids: set[str]
 ) -> dict[str, Any] | None:
-    query = (
-        client.table("question_bank")
-        .select("*")
-        .eq("stage", stage)
-        .eq("interview_type", interview["interview_type"])
-        .eq("difficulty", interview["difficulty"])
-        .eq("status", "reviewed")
-    )
-    if interview.get("company_type"):
-        query = query.eq("company_type", interview["company_type"])
-    if interview.get("target_role"):
-        query = query.eq("role", interview["target_role"])
-    res = await query.execute()
-    candidates = [q for q in res.data if q["id"] not in exclude_ids]
-    if not candidates:
-        return None
-    return random.choice(candidates)
+    """Picks a reviewed question_bank row for this stage, trying the most
+    specific personalization first (company_type + role) and falling back
+    to progressively broader matches, down to no personalization filter at
+    all, before giving up.
+
+    This fallback is required, not a nicety: `get_next_turn`'s caller
+    treats "no candidates for this stage" as "this stage is exhausted,
+    skip to the next one" (see its own comment), recursively, all the way
+    to finishing the interview if every remaining stage also comes up
+    empty. Found live: a student who filled in `target_role`/
+    `company_type` with real values (which `question_bank` seed data
+    almost never matches exactly -- see supabase/seed/
+    001_interview_templates_and_question_bank.sql's own header) got a
+    same-second "completed" interview with zero questions ever asked,
+    because the single exact-match query returned nothing for every stage
+    in a row. Falling back to broader matches here means personalization
+    is used when real matching content exists, and silently ignored
+    (never a broken interview) when it doesn't -- never the reverse.
+    """
+
+    def build_query(*, company_type: str | None, role: str | None):
+        query = (
+            client.table("question_bank")
+            .select("*")
+            .eq("stage", stage)
+            .eq("interview_type", interview["interview_type"])
+            .eq("difficulty", interview["difficulty"])
+            .eq("status", "reviewed")
+        )
+        if company_type:
+            query = query.eq("company_type", company_type)
+        if role:
+            query = query.eq("role", role)
+        return query
+
+    interview_company_type = interview.get("company_type")
+    interview_role = interview.get("target_role")
+
+    attempts: list[dict[str, str | None]] = []
+    if interview_company_type and interview_role:
+        attempts.append({"company_type": interview_company_type, "role": interview_role})
+    if interview_company_type:
+        attempts.append({"company_type": interview_company_type, "role": None})
+    if interview_role:
+        attempts.append({"company_type": None, "role": interview_role})
+    attempts.append({"company_type": None, "role": None})
+
+    for attempt in attempts:
+        res = await build_query(**attempt).execute()
+        candidates = [q for q in res.data if q["id"] not in exclude_ids]
+        if candidates:
+            return random.choice(candidates)
+    return None
 
 
 async def _maybe_generate_followup(

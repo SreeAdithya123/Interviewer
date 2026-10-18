@@ -219,6 +219,38 @@ async def test_get_next_turn_re_asks_the_current_question_when_called_again_befo
     assert len(fake_client.tables["interview_turns"]) == 1  # no duplicate/skip-ahead turn written
 
 
+async def test_get_next_turn_falls_back_to_a_broader_question_when_role_and_company_dont_match(
+    fake_client,
+):
+    """Regression test for a real bug found live, not by a mock: a student
+    who actually filled in target_role/company_type (exactly what the
+    setup form's placeholders invite) got a same-second "completed"
+    interview with zero turns ever asked. `_pick_question`'s exact-match
+    filter found no candidates for the interview's specific role/company
+    at the *first* stage, `get_next_turn` treated that as "stage
+    exhausted, skip it" and recursed through every remaining stage the
+    same way, reaching `finish_interview` with nothing ever written. The
+    fix: fall back to a broader match (no personalization filter) instead
+    of treating an unmatched personalization filter as if the whole stage
+    had no content at all."""
+    fake_client.seed("interviews", [
+        make_interview(status="in_progress", current_stage="intro", target_role="UI UX Designer", company_type="Apple")
+    ])
+    fake_client.seed("interview_templates", [TWO_STAGE_TEMPLATE])
+    # Seeded broadly (no role/company_type), exactly like
+    # supabase/seed/001_interview_templates_and_question_bank.sql's real
+    # rows -- never matches this interview's specific role/company.
+    fake_client.seed("question_bank", [
+        make_question(stage="intro", question_text="Tell me about yourself.", role=None, company_type=None)
+    ])
+
+    result = await engine.get_next_turn(INTERVIEW_ID)
+
+    assert result.interview_finished is False
+    assert result.stage == "intro"
+    assert result.question_text == "Tell me about yourself."
+
+
 async def test_advances_to_next_stage_once_stage_questions_are_exhausted(fake_client, monkeypatch):
     monkeypatch.setattr(gemini, "generate_followup", _no_followup_needed)
     fake_client.seed("interviews", [make_interview(status="in_progress", current_stage="intro", started_at=_recent_start())])

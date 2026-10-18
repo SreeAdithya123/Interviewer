@@ -71,6 +71,17 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const discardStopRef = useRef(false);
   const finishedRef = useRef(false);
   const lastAckClipIndexRef = useRef<number | null>(null);
+  // Guards the mount effect below against React's dev-mode double-invoke
+  // (mount -> cleanup -> mount again, same tick). A `cancelled` flag alone
+  // only stops a stale *result* from being applied — it doesn't stop the
+  // first invocation's call from actually reaching the server, which, for
+  // the first turn, really does create it and can really finish the
+  // interview server-side before that result is ever applied client-side.
+  // This ref isn't reset in the effect's cleanup, so it survives the
+  // synchronous remount and the second invocation skips firing a second
+  // real request; a genuine unmount (navigating away) gets a fresh
+  // component instance with a fresh ref regardless.
+  const mountEffectStartedRef = useRef(false);
 
   const playAcknowledgementClip = useCallback(() => {
     if (ACKNOWLEDGEMENT_CLIPS.length === 0) return;
@@ -156,6 +167,8 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   // identically here; a `cancelled` guard still skips a late state update
   // from an unmounted component the same way it did before this rewrite.
   useEffect(() => {
+    if (mountEffectStartedRef.current) return;
+    mountEffectStartedRef.current = true;
     let cancelled = false;
     sessionStartRef.current = Date.now();
     (async () => {
