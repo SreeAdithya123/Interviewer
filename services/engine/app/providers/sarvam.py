@@ -22,9 +22,11 @@ import base64
 import json
 import os
 import time
+from collections.abc import AsyncIterator
 from typing import Any
 
 import httpx
+from sarvamai import AsyncSarvamAI
 
 from app.config.loader import load_models, load_pricing
 from app.providers.errors import ProviderError
@@ -221,3 +223,102 @@ async def synthesize_speech(
         latency_ms=latency_ms,
         raw_response=payload,
     )
+
+
+async def synthesize_speech_streaming(
+    text: str,
+    voice: str,
+    *,
+    language_code: str = "en-IN",
+    pace: float = 1.0,
+) -> AsyncIterator[bytes]:
+    """Synthesize speech over Sarvam's WebSocket streaming endpoint,
+    yielding audio chunks as they arrive instead of waiting for the whole
+    clip like ``synthesize_speech`` does — lets a caller start playback (or
+    forwarding) on the first chunk rather than after full synthesis.
+
+    NOT YET CALLED from anywhere in the engine (same status as `r2.py` /
+    `redis_client.py`: built and verified here, wiring into the turn loop
+    is separate, later work) — the question/follow-up TTS path in
+    BUILD_SPEC Part 4.5 steps 3/5 still goes through the batch
+    `synthesize_speech` above, which is also what every existing caller in
+    this codebase (none yet — see docs/PROGRESS.md) would need to switch to.
+
+    Everything below was confirmed two ways, not just read off a docs page:
+    (1) reading the installed `sarvamai` SDK's own source
+    (`text_to_speech_streaming/client.py` and `socket_client.py`,
+    `sarvamai==0.1.37`), because docs.sarvam.ai's streaming guide (as of
+    2026-10-18) shows only SDK call shapes, never the raw wire protocol;
+    (2) one real smoke-test call against the live API with this exact
+    shape, which returned 7 real MP3 chunks + a final event. Specifically:
+
+    - The raw endpoint is ``wss://api.sarvam.ai/text-to-speech/ws`` — the
+      SDK builds this from ``SarvamAIEnvironment.PRODUCTION.production``
+      (``wss://api.sarvam.ai``) + ``/text-to-speech/ws``, never documented
+      as a literal string anywhere in the docs pages themselves.
+    - Auth header is ``Api-Subscription-Key`` (same key as
+      ``_auth_headers()`` above, different casing — HTTP headers are
+      case-insensitive, so this is not a second secret).
+    - The streaming `configure()` call's language parameter is named
+      ``target_language_code``, NOT ``language_code`` like the batch
+      ``/text-to-speech`` REST endpoint above. Easy to get wrong copying
+      ``synthesize_speech``'s signature — confirmed by reading
+      `socket_client.py`'s `configure()` directly, since Sarvam's own docs
+      pages inconsistently show both spellings across different pages.
+    - ``output_audio_codec`` on the STREAMING endpoint only supports MP3
+      ("currently supports MP3 only, optimized for real-time playback" —
+      the SDK docstring's own words), unlike the batch endpoint above which
+      requests `"wav"`. This function always yields MP3 bytes
+      (`content_type: "audio/mpeg"`, confirmed by the smoke test), not WAV.
+      A caller expecting WAV (e.g. for R2 caching keyed the same way as the
+      batch path) needs a transcode step, or must accept MP3 for this path.
+    - The model defaults to `bulbul:v3` server-side when omitted, but it is
+      passed explicitly here (`SARVAM_TTS_MODEL_ID`) rather than relied on,
+      matching `app/config/models.yaml`'s pin.
+    - Completion is signalled by an `event` message with
+      `data.event_type == "final"` (opted into via `send_completion_event`
+      on `connect()`) — without that flag the server never sends it and a
+      caller would have no principled way to know synthesis is done versus
+      the connection just being slow.
+
+    Raises ``SarvamTTSError`` up front for the same 2,500-character cap as
+    ``synthesize_speech``, or if the server sends an `error` message or the
+    connection/auth fails.
+    """
+    if len(text) > SARVAM_TTS_MAX_CHARACTERS:
+        raise SarvamTTSError(
+            f"text is {len(text)} characters, over Sarvam TTS's "
+            f"{SARVAM_TTS_MAX_CHARACTERS}-character limit; chunk it before calling."
+        )
+
+    client = AsyncSarvamAI()
+    api_key = os.environ.get("SARVAM_API_KEY", "")
+
+    try:
+        async with client.text_to_speech_streaming.connect(
+            model=SARVAM_TTS_MODEL_ID,
+            send_completion_event=True,
+            api_subscription_key=api_key,
+        ) as ws:
+            await ws.configure(
+                target_language_code=language_code,
+                speaker=voice,
+                pace=pace,
+                output_audio_codec="mp3",
+            )
+            await ws.convert(text)
+            await ws.flush()
+
+            while True:
+                message = await ws.recv()
+                if message.type == "audio":
+                    yield base64.b64decode(message.data.audio)
+                elif message.type == "event":
+                    if message.data.event_type == "final":
+                        return
+                elif message.type == "error":
+                    raise SarvamTTSError(f"Sarvam TTS streaming returned an error: {message.data}")
+    except SarvamTTSError:
+        raise
+    except Exception as exc:
+        raise SarvamTTSError(f"Sarvam TTS streaming request failed: {exc}") from exc

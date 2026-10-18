@@ -8,3 +8,4 @@ pyyaml
 supabase
 boto3
 upstash-redis
+sarvamai>=0.1.37

@@ -49,6 +49,14 @@ interface MicVADLike {
 const VAD_VERSION = "0.0.24";
 const ORT_VERSION = "1.14.0";
 
+/** Pre-recorded acknowledgement clips (BUILD_SPEC Part 4.5 step 6: "While
+ * waiting, the browser plays a short pre-recorded acknowledgement clip so
+ * the gap feels natural"). Real Sarvam Bulbul v3 TTS output, synthesized
+ * once and bundled as static files — not a live per-turn synthesis call,
+ * so this has nothing to do with the real-vs-stub engine boundary above;
+ * it plays the same way once the real engine is wired in. */
+const ACKNOWLEDGEMENT_CLIPS = ["/audio/ack-1.wav", "/audio/ack-2.wav", "/audio/ack-3.wav"];
+
 export function InterviewRoomClient({ interview: initialInterview }: { interview: Interview }) {
   const router = useRouter();
 
@@ -76,6 +84,22 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
   const vadRef = useRef<MicVADLike | null>(null);
   const discardStopRef = useRef(false);
   const finishedRef = useRef(false);
+  const lastAckClipIndexRef = useRef<number | null>(null);
+
+  const playAcknowledgementClip = useCallback(() => {
+    if (ACKNOWLEDGEMENT_CLIPS.length === 0) return;
+    let index = Math.floor(Math.random() * ACKNOWLEDGEMENT_CLIPS.length);
+    if (ACKNOWLEDGEMENT_CLIPS.length > 1 && index === lastAckClipIndexRef.current) {
+      index = (index + 1) % ACKNOWLEDGEMENT_CLIPS.length;
+    }
+    lastAckClipIndexRef.current = index;
+    const audio = new Audio(ACKNOWLEDGEMENT_CLIPS[index]);
+    audio.volume = 0.85;
+    // Autoplay can still be blocked in some browser states even after prior
+    // user interaction (mic grant); this is a nice-to-have, not a required
+    // step, so a rejected play() is silently ignored rather than surfaced.
+    void audio.play().catch(() => {});
+  }, []);
 
   const interviewId = interview.id;
 
@@ -285,6 +309,7 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
         streamRef.current = null;
         setVadStatus("off");
         if (!wasDiscarded) {
+          playAcknowledgementClip();
           void saveCurrentTurn(blob, durationSeconds);
         }
       };
@@ -325,7 +350,7 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
           : "Microphone access failed. Check your browser's microphone permission and try again.",
       );
     }
-  }, [saveCurrentTurn, stopRecording]);
+  }, [playAcknowledgementClip, saveCurrentTurn, stopRecording]);
 
   // Per-answer 180-second cap.
   useEffect(() => {

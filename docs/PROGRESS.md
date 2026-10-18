@@ -1,5 +1,28 @@
 # Progress
 
+## Phase 1 (continued): perceived-latency work — real acknowledgement clips (done) + a streaming Sarvam TTS client (built, not wired)
+
+**What was built**
+
+Scoped down from an initial ask to "switch TTS to streaming" after discovering mid-task that the real question-audio pipeline doesn't exist yet at all (see below) — so this landed the two pieces that are genuinely independent of that gap, honestly, rather than silently expanding scope to build the missing pipeline too:
+
+- **`apps/web/public/audio/ack-{1,2,3}.wav`**: three short acknowledgement clips (BUILD_SPEC Part 4.5 step 6), real Sarvam Bulbul v3 output synthesized once via the already-live batch `synthesize_speech` client (27 paise total, one-time — not a per-interview cost). Wired into `InterviewRoomClient.tsx`: the instant the recorder stops (VAD or the manual "Done answering" button), one clip plays at random (never the same one twice in a row) before the turn-save network calls begin.
+- **`services/engine/app/providers/sarvam.py`**: `synthesize_speech_streaming(text, voice, *, language_code="en-IN", pace=1.0) -> AsyncIterator[bytes]`, using the official `sarvamai` SDK (added to `requirements.txt`, `>=0.1.37`) against Sarvam's WebSocket streaming endpoint — yields MP3 chunks as they arrive instead of waiting for full synthesis like the batch client. The exact wire shape (endpoint URL, auth header, the `configure()`/`convert()`/`flush()` message protocol, MP3-only output) was confirmed two ways: reading the installed SDK's own source directly (its docs page only shows SDK call shapes, never the raw protocol) and one live smoke-test call against the real API. See `docs/DECISIONS.md`'s new top entry for the full reasoning.
+- `services/engine/tests/providers/test_sarvam.py` gained 4 tests for the streaming client (decoded-chunk yielding, the real config/text/flush message order, a server-sent error, the character-limit guard) — all mocked at the same seam the function imports (`AsyncSarvamAI`), per BUILD_SPEC Part 6; no automated test calls the real network.
+
+**What was verified, and how**
+
+- `ruff check` and `pytest` both exit 0 in `services/engine` (70 tests total, including the 4 new ones). `tsc --noEmit` and `eslint` both exit 0 in `apps/web`.
+- The three ack clips are real audio, confirmed by actually generating them against the live `SARVAM_API_KEY` (not a stub) and reading back each file's real byte size and cost in paise from the API response.
+- The streaming client's call shape is confirmed against the real API, not just mocked tests: a one-off smoke-test script (not part of the suite) opened a real WebSocket connection and received 7 real MP3 chunks plus a real completion event with the exact code this piece ships.
+- Confirmed the static ack-clip files are served correctly by the real Next.js dev server (`GET /audio/ack-1.wav` → 200, then a 206 Partial Content on the browser's own range request — the normal pattern for `<audio>`/`new Audio()` playback).
+
+**What is still pending / a known gap for whoever picks this up**
+
+- **Neither piece is connected to a live turn yet.** Discovered mid-task that `InterviewRoomClient.tsx` runs entirely against `lib/ai-stubs/interview-engine` (stub questions, stub transcripts, stub reports — see its own `PreviewBadge`), and that `app/interview/engine.py`'s `get_next_turn` has never called any TTS client at all. The ack clip plays correctly in the current stub-mode UI and will keep working once the real engine is wired in, since it's triggered by a UI phase transition, not by any provider response. The streaming TTS client cannot be exercised end-to-end yet for the same reason the batch `synthesize_speech` never has been either — wiring real question audio into the turn loop (plus R2 caching by `(text, voice)` hash, per BUILD_SPEC Part 4.5 step 3) is separate, larger work, and still blocked on the same missing R2 keys as the Phase 1 cost/latency test itself.
+- No real interactive click-through of the ack-clip playback in a browser with a real microphone was done (would need a signed-in session with a seeded interview row) — verified by code review plus the static-asset and unit-test checks above, not a live recording session.
+- `synthesize_speech_streaming` was not benchmarked for actual time-to-first-chunk; the smoke test confirmed it works, not how much latency it actually saves versus the batch call in practice.
+
 ## Phase 1: 4 of 5 provider keys live and verified; R2 still missing
 
 The founder provided Groq, Gemini, Sarvam, and an Upstash key. Each was verified with a real, minimal call before being trusted — not just pasted into `.env` on faith:
