@@ -1,5 +1,35 @@
 # Progress
 
+## Phase 1: all 5 provider keys now live — a real interview was driven end to end against real providers and the live database
+
+**What was built**
+
+- All three R2 values provided and verified with a real `PutObject`/`GetObject`/`DeleteObject` round trip against the live `vyoman-interviewer` bucket — the last of the 5 Phase 1 provider keys. `services/engine/.env` updated (gitignored, not committed).
+- `supabase/seed/001_interview_templates_and_question_bank.sql`: 4 `interview_templates` rows (one per `interview_type`, one shared 5-stage plan) and 108 `question_bank` rows (36 unique questions × 3 difficulties), applied to the live project. Zero rows existed before this — the real engine could not have produced a working interview without it.
+- `services/engine/app/interview/engine.py`: new `create_interview` (picks `template_id` by `interview_type`) and `get_report` functions, plus matching `POST /interviews` and `GET /interviews/{id}/report` routes in `app/main.py` — both previously missing (`manual_test_harness.py` only speculatively tried them). New `ReportNotFoundError`/`NoActiveTemplateError` exceptions, both mapped to HTTP status codes in `main.py`.
+- A real, reproducible bug fix in `get_next_turn`: calling it twice before an answer was submitted used to skip the question and advance the stage early (see `docs/DECISIONS.md` for the full mechanism). Fixed, covered by a new permanent regression test, and re-confirmed against the live database.
+- `apps/web/lib/interview/engine-client.ts` (new): server-only HTTP client for the FastAPI engine. `apps/web/lib/interview/actions.ts` rewritten from a client-side RPC-caller into real Server Actions (`"use server"`) that read the signed-in user via `getCurrentProfile()` before ever calling the engine. `apps/web/components/interview/InterviewRoomClient.tsx` rewritten to drive the real turn loop (real questions, real transcripts, real stage progression) instead of `lib/ai-stubs/interview-engine`'s fixtures. `InterviewReportClient.tsx`'s preview badge is now conditional on `model_id === 'stub-fixture-v1'` instead of always showing.
+- `ENGINE_BASE_URL=http://localhost:8000` added to `apps/web/.env.local` (already documented in the root `.env.example`).
+
+**What was verified, and how — this is the part that matters**
+
+A full real interview was driven turn-by-turn directly against the running engine's real HTTP routes (not the FakeClient, not mocks): created via `POST /interviews`, 10 real turns across intro → resume_deep_dive → technical (real Groq/Sarvam STT on each submitted clip, real Gemini follow-up decisions, correct stage progression and follow-up-cap enforcement), then `POST /finish`. This is the first time this project's real engine has completed a real multi-turn interview against live providers. Two real, previously-unknown-to-work problems surfaced by this that no mocked test could have caught:
+
+1. The `get_next_turn` re-ask bug above.
+2. `gemini-2.5-flash-lite` (the pinned conversation model) now 404s for this project's `GEMINI_API_KEY` — "no longer available to new users." Swapped to `gemini-3.5-flash-lite` in `models.yaml`, with `pricing.yaml` updated to that model's real current rates (~6x higher per token than the old pin, though still the cheapest line item overall). Re-verified live: the engine then produced a genuinely sensible follow-up question in response to a garbled transcript.
+3. `gemini-4-argon` (the evaluation model) has **zero free-tier quota** on this project's `GEMINI_API_KEY` — a real `finish_interview` call failed with `RESOURCE_EXHAUSTED`/`limit: 0` (a flat no-access wall, not a rate limit). `finish_interview` handled it exactly as designed: the interview completed, the report was written as `status: 'failed'` with the real error, nothing crashed. Given the choice (enable billing vs. accept the documented fallback), the founder chose the fallback: swapped `models.yaml`'s evaluation model to `gemini-3.8-flash`, updated `pricing.yaml` to its real rates (own intro-pricing cutoff, 2026-12-31, tracked in `app/costs/tracking.py`'s `GEMINI_EVAL_INTRO_PRICING_CUTOFF`), and re-ran a real `finish_interview` end to end: `status: "completed"`, `model_id: "gemini-3.8-flash"`, a genuinely evidence-grounded report (score 0 with the literal garbled transcript quoted as evidence, sensible weak-areas/practice-actions — not invented feedback).
+
+`pytest` (76 tests) and `ruff check` both exit 0 in `services/engine`; `tsc --noEmit` and `eslint` both exit 0 in `apps/web`, after this change.
+
+**Nothing is blocked anymore.** The full loop — create, ask, transcribe, decide follow-ups, progress stages, finish, evaluate — has now been run for real, end to end, against live providers and the live database, with a real report at the end.
+
+**What is still pending / known gaps, honestly**
+
+- The recorded answer audio is still never persisted anywhere durable (not R2, not even in-browser across a reload) — `submit_answer` still takes raw bytes, not an R2 key; this is real, separate, already-documented follow-up work, now unblocked by R2 but not done here.
+- The pre-existing `company_type`/`role` free-text exact-match gap (typing a specific role/company yields zero questions for every stage) is unchanged — every seeded question has both left `NULL`, so it only matches when a student leaves those fields blank.
+- No real interactive browser click-through (sign-in, microphone, the actual `/app/interview` UI) was done — this needs a human with a real inbox for the email-OTP sign-in and a real microphone; verified instead via direct HTTP calls against the real engine routes, `tsc`/`eslint` on the frontend, and the full pytest suite.
+- The `*_stub_interview` RPC functions (`supabase/migrations/20261017160925_interview_stub_bridge.sql`) are now unused by `apps/web` but were left in the schema rather than dropped in this same change.
+
 ## Phase 1 (continued): perceived-latency work — real acknowledgement clips (done) + a streaming Sarvam TTS client (built, not wired)
 
 **What was built**

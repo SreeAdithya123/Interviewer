@@ -1,31 +1,42 @@
-"use client";
+"use server";
 
 /**
- * Client-side wrappers around the `*_stub_interview` RPC functions
- * (supabase/migrations/20261017180000_interview_stub_bridge.sql). These
- * are real writes to the real `interviews`/`interview_turns`/
- * `interview_reports` tables under the signed-in user's own session — only
- * the *content* of a turn/report is stub-generated (see
- * lib/ai-stubs/interview-engine.ts), not the write path itself.
+ * Server Actions for the real AI interview engine. Runs server-side only,
+ * so it can read the signed-in user via `getCurrentProfile()` (cookie
+ * session, never trusted from client input) before calling the FastAPI
+ * engine (services/engine) — which itself has no auth of its own and
+ * trusts its caller, per services/engine/docs/DECISIONS.md. This file is
+ * that trusted caller; the browser never talks to the engine directly.
  *
- * TODO(phase-1): once the real engine exists, these calls move server-side
- * (the engine's service role writes directly) and this file's RPC calls
- * can be deleted along with the SQL functions they wrap.
+ * Replaces the previous `create_stub_interview`/`record_stub_interview_turn`/
+ * `finish_stub_interview` RPC calls (supabase/migrations/
+ * 20261017160925_interview_stub_bridge.sql) now that the real engine
+ * exists and has seeded `interview_templates`/`question_bank` rows to
+ * work with (supabase/seed/001_interview_templates_and_question_bank.sql)
+ * — per that migration's own header, which already called this move
+ * "server-side... the engine's service role writes directly" the intended
+ * end state. The stub RPC functions themselves are left in the schema for
+ * now (harmless, unused) rather than dropped in this same change.
  */
 
-import { createClient } from "@/lib/supabase/client";
-import type {
-  Difficulty,
-  Interview,
-  InterviewReport,
-  InterviewStage,
-  InterviewType,
-  QuestionSource,
-} from "@/lib/interview/types";
-import type { StubReport } from "@/lib/ai-stubs/interview-engine";
+import { getCurrentProfile } from "@/lib/auth/current-profile";
+import {
+  engineCreateInterview,
+  engineFinishInterview,
+  engineGetNextTurn,
+  engineSubmitAnswer,
+  type EngineNextTurn,
+  type EngineSubmitAnswerResult,
+} from "@/lib/interview/engine-client";
+import { createClient } from "@/lib/supabase/server";
+import type { Difficulty, Interview, InterviewType } from "@/lib/interview/types";
 
-function rpcError(error: { message: string } | null, fallback: string): never {
-  throw new Error(error?.message || fallback);
+async function requireSignedInProfile() {
+  const profile = await getCurrentProfile();
+  if (!profile) {
+    throw new Error("You must be signed in to do this.");
+  }
+  return profile;
 }
 
 export async function createInterview(input: {
@@ -34,70 +45,49 @@ export async function createInterview(input: {
   companyType: string;
   difficulty: Difficulty;
 }): Promise<Interview> {
-  const supabase = createClient();
-  const { data, error } = await supabase.rpc("create_stub_interview", {
-    p_interview_type: input.interviewType,
-    p_target_role: input.targetRole || null,
-    p_company_type: input.companyType || null,
-    p_difficulty: input.difficulty,
+  const profile = await requireSignedInProfile();
+
+  const created = await engineCreateInterview({
+    userId: profile.id,
+    interviewType: input.interviewType,
+    difficulty: input.difficulty,
+    targetRole: input.targetRole || null,
+    companyType: input.companyType || null,
+    collegeId: profile.college_id,
   });
-  if (error || !data) rpcError(error, "Could not create the interview.");
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("interviews").select("*").eq("id", created.id).single();
+  if (error || !data) {
+    throw new Error("Interview was created but could not be read back.");
+  }
   return data as Interview;
 }
 
-export async function startInterview(interviewId: string): Promise<Interview> {
-  const supabase = createClient();
-  const { data, error } = await supabase.rpc("start_stub_interview", {
-    p_interview_id: interviewId,
-  });
-  if (error || !data) rpcError(error, "Could not start the interview.");
-  return data as Interview;
+export async function getNextTurn(interviewId: string): Promise<EngineNextTurn> {
+  await requireSignedInProfile();
+  return engineGetNextTurn(interviewId);
 }
 
-export async function recordInterviewTurn(input: {
-  interviewId: string;
-  turnNumber: number;
-  stage: InterviewStage;
-  questionText: string;
-  questionSource: QuestionSource;
-  isFollowUp: boolean;
-  transcript: string;
-  answerDurationSeconds: number;
-}) {
-  const supabase = createClient();
-  const { data, error } = await supabase.rpc("record_stub_interview_turn", {
-    p_interview_id: input.interviewId,
-    p_turn_number: input.turnNumber,
-    p_stage: input.stage,
-    p_question_text: input.questionText,
-    p_question_source: input.questionSource,
-    p_is_follow_up: input.isFollowUp,
-    p_transcript: input.transcript,
-    p_answer_duration_seconds: input.answerDurationSeconds,
-  });
-  if (error || !data) rpcError(error, "Could not save that answer.");
-  return data;
+export async function submitAnswer(formData: FormData): Promise<EngineSubmitAnswerResult> {
+  await requireSignedInProfile();
+
+  const interviewId = String(formData.get("interviewId") ?? "");
+  const turnId = String(formData.get("turnId") ?? "");
+  const answerDurationSeconds = Number(formData.get("answerDurationSeconds") ?? 0);
+  const audio = formData.get("audio");
+
+  if (!interviewId || !turnId) {
+    throw new Error("Missing interviewId or turnId.");
+  }
+  if (!(audio instanceof Blob)) {
+    throw new Error("Missing recorded audio.");
+  }
+
+  return engineSubmitAnswer(interviewId, turnId, audio, answerDurationSeconds);
 }
 
-export async function finishInterview(input: {
-  interviewId: string;
-  durationSeconds: number;
-  eyeContactPct: number | null;
-  postureStabilityPct: number | null;
-  report: StubReport;
-}): Promise<InterviewReport> {
-  const supabase = createClient();
-  const { data, error } = await supabase.rpc("finish_stub_interview", {
-    p_interview_id: input.interviewId,
-    p_duration_seconds: input.durationSeconds,
-    p_eye_contact_pct: input.eyeContactPct,
-    p_posture_stability_pct: input.postureStabilityPct,
-    p_scores: input.report.scores,
-    p_overall_score: input.report.overall_score,
-    p_strengths: input.report.strengths,
-    p_weak_areas_summary: input.report.weak_areas_summary,
-    p_practice_actions: input.report.practice_actions,
-  });
-  if (error || !data) rpcError(error, "Could not save the report.");
-  return data as InterviewReport;
+export async function finishInterview(interviewId: string): Promise<void> {
+  await requireSignedInProfile();
+  await engineFinishInterview(interviewId);
 }

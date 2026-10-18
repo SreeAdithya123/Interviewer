@@ -49,7 +49,7 @@ export function InterviewReportClient({
             {interview.duration_seconds ? ` · ${formatClock(interview.duration_seconds)} total` : ""}
           </p>
         </div>
-        <PreviewBadge />
+        {report?.model_id === "stub-fixture-v1" && <PreviewBadge />}
       </div>
 
       {!report && (

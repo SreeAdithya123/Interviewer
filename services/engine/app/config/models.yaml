@@ -79,16 +79,20 @@ tts:
 
 conversation:
   provider: gemini
-  model_id: gemini-2.5-flash-lite
-  # Confirmed 2026-10-18 against https://ai.google.dev/gemini-api/docs/models
-  # (direct Gemini API model catalog, not Vertex AI). Matches BUILD_SPEC
-  # Part 2's "Gemini 2.5 Flash-Lite" exactly. Still listed (not deprecated)
-  # as of this date, though Google's models page now steers *new* projects
-  # toward gemini-3.5-flash-lite or gemini-3.8-flash — BUILD_SPEC pins 2.5
-  # Flash-Lite by name, so that pin is kept here; flag a model bump as its
-  # own decision in docs/DECISIONS.md rather than drifting silently.
+  model_id: gemini-3.5-flash-lite
+  # SUPERSEDES the earlier gemini-2.5-flash-lite pin (BUILD_SPEC Part 2's
+  # literal "Gemini 2.5 Flash-Lite") -- that pin was kept once on the theory
+  # that it was "still listed, not deprecated" on the docs page, but a real
+  # live call against this project's actual GEMINI_API_KEY on 2026-10-18
+  # returned a hard 404: "This model models/gemini-2.5-flash-lite is no
+  # longer available to new users. Please update your code to use
+  # models/gemini-3.5-flash-lite." This project's key is new enough (this
+  # whole Supabase project was created 2026-10-17) to fall in that bucket --
+  # confirmed the live API's actual behavior is the ground truth here, not
+  # the pricing/model-catalog docs pages, which still list 2.5-flash-lite
+  # with no deprecation marker as of the same date. See docs/DECISIONS.md.
   confirmed: "2026-10-18"
-  source: https://ai.google.dev/gemini-api/docs/models
+  source: "live API error on a real call, recommending this exact model id -- see docs/DECISIONS.md"
   notes: >
     Used for in-stage follow-up generation only (the state machine controls
     stage order; the LLM never does, per BUILD_SPEC Part 4.5). Also the
@@ -101,30 +105,31 @@ conversation:
 
 evaluation:
   provider: gemini
-  model_id: gemini-4-argon
-  # SUBSTITUTION — "Gemini 3.5 Flash" (the exact name in BUILD_SPEC Part 2)
-  # does NOT exist on https://ai.google.dev/gemini-api/docs/models as of
-  # 2026-10-18. The nearest real names are gemini-3.5-flash-lite (a cheaper
-  # lite variant, not "Flash") and gemini-3.8-flash. Google's naming has
-  # moved on since the spec was written. See docs/DECISIONS.md for the full
-  # substitution reasoning; gemini-4-argon was chosen as the current
-  # best-available reasoning-capable model for this evaluation/scoring task.
+  model_id: gemini-3.8-flash
+  # SWAPPED 2026-10-18 from gemini-4-argon (itself a substitution for the
+  # non-existent "Gemini 3.5 Flash" named in BUILD_SPEC Part 2 — see
+  # docs/DECISIONS.md for that original substitution reasoning, still
+  # accurate history). Argon was confirmed working end-to-end in a real
+  # evaluate_interview call, then a real finish_interview call against this
+  # project's actual GEMINI_API_KEY hit RESOURCE_EXHAUSTED with limit: 0 —
+  # not a rate limit, a flat zero free-tier quota for gemini-4-argon on
+  # this key. Enabling billing vs. accepting a cheaper/weaker model was a
+  # real cost decision for the founder, not this build's call to make
+  # silently; the founder chose the fallback BUILD_SPEC Part 2's eval
+  # harness already anticipated via the `configurable` flag below, so this
+  # is that documented fallback path being exercised, not an improvisation.
   confirmed: "2026-10-18"
-  source: https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+  source: https://ai.google.dev/gemini-api/docs/models
   configurable: true  # BUILD_SPEC Part 2: "configurable, chosen by the eval harness"
   notes: >
-    Google's own description: "our flagship reasoning model, built for
-    complex software engineering, deep mathematical and scientific problem
-    solving, autonomous multi-step agents." Went GA via the Gemini API on
-    2026-10-13 (five days before this was confirmed) per Google's own
-    changelog coverage — new enough that build agents should sanity-check
-    availability/quota in their own GCP/AI-Studio project before relying on
-    it in production, and should keep gemini-3.8-flash (also stable, also
-    supports thinking at low/medium/high) wired as a documented, easy
-    fallback via the same `configurable` flag if Argon proves rate-limited
-    or flaky. Supports structured output (responseSchema) — use it for the
-    evaluation JSON schema in BUILD_SPEC Part 4.5 step 8. Thinking/reasoning
-    tokens are billed as OUTPUT tokens (see pricing.yaml note) — sum
+    Stable (not a five-days-old GA release like Argon was), thinking-capable
+    at low/medium/high, materially cheaper than Argon — see pricing.yaml.
+    Supports structured output (responseSchema) — confirmed with a real
+    call (not just Argon's, separately, before the swap): a real
+    finish_interview run produced a genuinely evidence-grounded report
+    (score 0 with the exact garbled transcript quoted as evidence, not
+    invented feedback) under this model, with no quota error. Thinking/
+    reasoning tokens are billed as OUTPUT tokens (see pricing.yaml note) — sum
     candidatesTokenCount + thoughtsTokenCount from usageMetadata when
     computing cost, not candidatesTokenCount alone.
   api_base: https://generativelanguage.googleapis.com/v1beta

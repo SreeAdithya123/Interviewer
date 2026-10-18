@@ -130,6 +130,48 @@ async def _no_followup_needed(**_kwargs) -> gemini.FollowupResult:
 
 
 # ---------------------------------------------------------------------------
+# Creating an interview (BUILD_SPEC Part 4.5 step 1)
+# ---------------------------------------------------------------------------
+
+
+async def test_create_interview_picks_the_active_template_for_the_interview_type(fake_client):
+    fake_client.seed("interview_templates", [TWO_STAGE_TEMPLATE])
+
+    result = await engine.create_interview(
+        user_id=USER_ID,
+        interview_type="technical",
+        difficulty="medium",
+        target_role="Backend Engineer",
+        company_type="product",
+        college_id=COLLEGE_ID,
+    )
+
+    assert result.status == "pending"
+    inserted = fake_client.tables["interviews"][0]
+    assert inserted["id"] == result.interview_id
+    assert inserted["template_id"] == TEMPLATE_ID
+    assert inserted["user_id"] == USER_ID
+    assert inserted["status"] == "pending"
+
+
+async def test_create_interview_defaults_role_and_company_type_to_none(fake_client):
+    fake_client.seed("interview_templates", [TWO_STAGE_TEMPLATE])
+
+    await engine.create_interview(user_id=USER_ID, interview_type="technical", difficulty="easy")
+
+    inserted = fake_client.tables["interviews"][0]
+    assert inserted["target_role"] is None
+    assert inserted["company_type"] is None
+
+
+async def test_create_interview_raises_when_no_active_template_for_the_type(fake_client):
+    fake_client.seed("interview_templates", [{**TWO_STAGE_TEMPLATE, "is_active": False}])
+
+    with pytest.raises(engine.NoActiveTemplateError):
+        await engine.create_interview(user_id=USER_ID, interview_type="technical", difficulty="medium")
+
+
+# ---------------------------------------------------------------------------
 # Stage progression
 # ---------------------------------------------------------------------------
 
@@ -151,6 +193,30 @@ async def test_first_call_starts_interview_and_asks_intro_question(fake_client, 
     assert interview_row["status"] == "in_progress"
     assert interview_row["current_stage"] == "intro"
     assert interview_row["started_at"] is not None
+
+
+async def test_get_next_turn_re_asks_the_current_question_when_called_again_before_an_answer(
+    fake_client, monkeypatch
+):
+    """Regression test for a real bug found by a live smoke test (not a
+    mock): calling `get_next_turn` twice before the first turn was
+    answered used to fall through the follow-up/new-question checks
+    (neither applies to an unanswered turn) straight into the
+    stage-advance branch, silently skipping the unanswered question and
+    jumping to the next stage. A second call must return the exact same
+    turn as the first, unchanged."""
+    monkeypatch.setattr(gemini, "generate_followup", _no_followup_needed)
+    fake_client.seed("interviews", [make_interview(status="in_progress", current_stage="intro", started_at=_recent_start())])
+    fake_client.seed("interview_templates", [TWO_STAGE_TEMPLATE])
+    fake_client.seed("question_bank", [make_question(stage="intro", question_text="Walk me through your resume.")])
+
+    first = await engine.get_next_turn(INTERVIEW_ID)
+    second = await engine.get_next_turn(INTERVIEW_ID)
+
+    assert second.turn_id == first.turn_id
+    assert second.stage == "intro"
+    assert second.question_text == "Walk me through your resume."
+    assert len(fake_client.tables["interview_turns"]) == 1  # no duplicate/skip-ahead turn written
 
 
 async def test_advances_to_next_stage_once_stage_questions_are_exhausted(fake_client, monkeypatch):
@@ -531,6 +597,41 @@ async def test_finish_interview_is_idempotent(fake_client, monkeypatch):
     await engine.finish_interview(INTERVIEW_ID)  # must simply return, no error
 
     assert fake_client.tables.get("interview_reports", []) == []
+
+
+# ---------------------------------------------------------------------------
+# Reading a report back (BUILD_SPEC Part 4.5 step 9)
+# ---------------------------------------------------------------------------
+
+
+async def test_get_report_returns_a_completed_report(fake_client):
+    fake_client.seed("interview_reports", [{
+        "interview_id": INTERVIEW_ID,
+        "user_id": USER_ID,
+        "college_id": COLLEGE_ID,
+        "status": "completed",
+        "scores": {"communication_clarity": {"score": 4, "summary": "Clear.", "evidence": ["quote"]}},
+        "overall_score": 4.0,
+        "strengths": ["Clear communicator"],
+        "weak_areas_summary": [{"skill": "System design", "severity": "medium", "notes": "Light on tradeoffs."}],
+        "practice_actions": ["Practice explaining tradeoffs out loud."],
+        "model_id": "gemini-4-argon",
+        "prompt_version": "interview_evaluation_v1",
+        "error_message": None,
+    }])
+
+    report = await engine.get_report(INTERVIEW_ID)
+
+    assert report.status == "completed"
+    assert report.overall_score == 4.0
+    assert report.strengths == ["Clear communicator"]
+    assert report.weak_areas_summary[0]["skill"] == "System design"
+    assert report.model_id == "gemini-4-argon"
+
+
+async def test_get_report_raises_not_found_before_the_interview_is_finished(fake_client):
+    with pytest.raises(engine.ReportNotFoundError):
+        await engine.get_report(INTERVIEW_ID)
 
 
 # ---------------------------------------------------------------------------

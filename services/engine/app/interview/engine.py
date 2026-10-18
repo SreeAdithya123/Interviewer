@@ -54,6 +54,19 @@ class TurnNotFoundError(InterviewEngineError):
     different interview than the one named alongside it."""
 
 
+class ReportNotFoundError(InterviewNotFoundError):
+    """No `interview_reports` row exists for the given interview id yet
+    (e.g. the interview hasn't been finished). Subclasses
+    `InterviewNotFoundError` deliberately, not `InterviewEngineError`
+    directly, so it gets the same 404 mapping in `app/main.py` for free."""
+
+
+class NoActiveTemplateError(InterviewEngineError):
+    """No active `interview_templates` row exists for the requested
+    `interview_type` — the caller asked to start an interview this engine
+    has no question plan for."""
+
+
 class InvalidInterviewStateError(InterviewEngineError):
     """The interview exists but is not in a state this call is valid for
     (e.g. already completed, or its template is missing/misconfigured)."""
@@ -102,9 +115,88 @@ class StageConfig:
     question_count: int
 
 
+@dataclass(frozen=True)
+class CreateInterviewResult:
+    interview_id: str
+    status: str
+
+
+@dataclass(frozen=True)
+class ReportResult:
+    """Mirrors the subset of `interview_reports` columns a report page
+    needs to render (BUILD_SPEC Part 4.5 step 9). `status='pending'` means
+    the interview hasn't been finished (or finishing hasn't completed its
+    evaluation call) yet — not an error; the caller decides how to poll or
+    present that."""
+
+    status: str
+    scores: dict[str, Any] | None
+    overall_score: float | None
+    strengths: list[str]
+    weak_areas_summary: list[dict[str, Any]]
+    practice_actions: list[str]
+    model_id: str | None
+    prompt_version: str | None
+    error_message: str | None
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
+
+async def create_interview(
+    *,
+    user_id: str,
+    interview_type: str,
+    difficulty: str,
+    target_role: str | None = None,
+    company_type: str | None = None,
+    college_id: str | None = None,
+) -> CreateInterviewResult:
+    """Create a real `interviews` row, status `pending`, per BUILD_SPEC
+    Part 4.5 step 1 ("Student picks interview type, target role, company
+    type, difficulty"). No HTTP route called this before today —
+    `apps/web`'s setup form instead wrote straight to Supabase via the
+    temporary `create_stub_interview` RPC
+    (supabase/migrations/20261017160925_interview_stub_bridge.sql), which
+    never set `template_id` at all, since it predates any seeded
+    `interview_templates` row to pick. This is that real engine-side path.
+
+    `template_id` is picked by `interview_type` alone — the only key
+    `supabase/seed/001_interview_templates_and_question_bank.sql` seeds
+    templates by (one shared stage plan per type, per that file's own
+    docstring); `target_role`/`company_type`/`difficulty` do not affect
+    which template is used, only which questions `_pick_question` later
+    matches within it.
+    """
+    client = await get_client()
+    template_res = (
+        await client.table("interview_templates")
+        .select("id")
+        .eq("interview_type", interview_type)
+        .eq("is_active", True)
+        .execute()
+    )
+    if not template_res.data:
+        raise NoActiveTemplateError(
+            f"no active interview_templates row for interview_type={interview_type!r}"
+        )
+    template_id = template_res.data[0]["id"]
+
+    row = {
+        "user_id": user_id,
+        "college_id": college_id,
+        "template_id": template_id,
+        "interview_type": interview_type,
+        "target_role": target_role,
+        "company_type": company_type,
+        "difficulty": difficulty,
+        "status": "pending",
+    }
+    res = await client.table("interviews").insert(row).execute()
+    inserted = res.data[0]
+    return CreateInterviewResult(interview_id=inserted["id"], status=inserted["status"])
 
 
 async def get_next_turn(interview_id: str) -> NextTurnResult:
@@ -150,6 +242,19 @@ async def get_next_turn(interview_id: str) -> NextTurnResult:
     stage_config = stage_plan[stage_index]
     stage_turns = [t for t in turns if t["stage"] == current_stage]
     primary_turns = [t for t in stage_turns if not t["is_follow_up"]]
+
+    # The most recently asked turn in this stage (primary or follow-up)
+    # hasn't been answered yet -- re-ask it rather than falling through to
+    # the follow-up/next-question/stage-advance logic below, all of which
+    # assume the current question is already answered. Without this, a
+    # second `get_next_turn` call before an answer is submitted (a page
+    # refresh, a retried request, a frontend that re-fetches "the current
+    # question" instead of only ever consuming the response it already
+    # got) silently skips the unanswered question and jumps the stage
+    # forward -- caught by a real call against the live database, not a
+    # mocked test, which is exactly the kind of bug mocks can't catch.
+    if stage_turns and stage_turns[-1].get("transcript") is None:
+        return _turn_row_to_next_turn_result(stage_turns[-1])
 
     if primary_turns:
         last_primary = primary_turns[-1]
@@ -404,6 +509,35 @@ async def finish_interview(interview_id: str) -> None:
     await _rollup_interview_cost(client, interview_id)
 
 
+async def get_report(interview_id: str) -> ReportResult:
+    """Read back one interview's report, per BUILD_SPEC Part 4.5 step 9.
+    Raises `ReportNotFoundError` (404) if `finish_interview` has never run
+    for this interview — there is no report row to be pending or failed
+    yet, which is a different condition than a report that exists with
+    `status='pending'` (finished, evaluation not yet resolved)."""
+    client = await get_client()
+    res = (
+        await client.table("interview_reports")
+        .select("*")
+        .eq("interview_id", interview_id)
+        .execute()
+    )
+    if not res.data:
+        raise ReportNotFoundError(f"no report yet for interview {interview_id}")
+    row = res.data[0]
+    return ReportResult(
+        status=row["status"],
+        scores=row.get("scores"),
+        overall_score=row.get("overall_score"),
+        strengths=row.get("strengths") or [],
+        weak_areas_summary=row.get("weak_areas_summary") or [],
+        practice_actions=row.get("practice_actions") or [],
+        model_id=row.get("model_id"),
+        prompt_version=row.get("prompt_version"),
+        error_message=row.get("error_message"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -549,17 +683,25 @@ async def _write_turn(
         "follow_up_of_turn_id": follow_up_of_turn_id,
     }
     res = await client.table("interview_turns").insert(row).execute()
-    inserted = res.data[0]
+    return _turn_row_to_next_turn_result(res.data[0])
+
+
+def _turn_row_to_next_turn_result(turn: dict[str, Any]) -> NextTurnResult:
+    """Builds the same `NextTurnResult` shape from either a freshly
+    inserted `interview_turns` row (`_write_turn`) or an existing one being
+    re-asked verbatim (`get_next_turn`'s not-yet-answered guard above) --
+    one place that knows the column -> field mapping, so the two call
+    sites can't drift apart on it."""
     return NextTurnResult(
         interview_finished=False,
-        turn_id=inserted["id"],
-        turn_number=inserted["turn_number"],
-        stage=stage,
-        question_text=question_text,
-        question_source=question_source,
-        question_bank_id=question_bank_id,
-        is_follow_up=is_follow_up,
-        follow_up_of_turn_id=follow_up_of_turn_id,
+        turn_id=turn["id"],
+        turn_number=turn["turn_number"],
+        stage=turn["stage"],
+        question_text=turn["question_text"],
+        question_source=turn["question_source"],
+        question_bank_id=turn.get("question_bank_id"),
+        is_follow_up=turn["is_follow_up"],
+        follow_up_of_turn_id=turn.get("follow_up_of_turn_id"),
     )
 
 

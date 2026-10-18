@@ -65,34 +65,56 @@ sarvam_stt_diarized_per_second: 0.983333  # = (35.40 / 3600) * 100
 sarvam_tts_per_character: 0.3  # = (3.00 / 1000) INR/char * 100 paise/INR
 
 # ---------------------------------------------------------------------------
-# Conversation model: Gemini 2.5 Flash-Lite
+# Conversation model: Gemini 3.5 Flash-Lite (standard tier)
+# ---------------------------------------------------------------------------
+
+# Source: https://ai.google.dev/gemini-api/docs/pricing (confirmed 2026-10-18),
+# cross-checked against models.yaml's conversation entry for why this
+# superseded the earlier gemini-2.5-flash-lite pricing below. Standard-tier
+# text/image/video/audio input $0.30 per 1M tokens; output (including
+# thinking tokens) $2.50 per 1M tokens -- both roughly 6x and 6.25x the
+# superseded model's rates, though this is still the cheapest line item in
+# the whole per-interview cost breakdown (follow-up generation only; a
+# handful of short calls per interview), so the total-cost impact is small.
+# Batch/Flex ($0.15/$1.25) and Priority ($0.54/$4.50) tiers exist but are
+# not used here -- this engine only ever makes standard synchronous calls.
+gemini_flash_lite_input_per_token: 0.00285087   # = (0.30 / 1e6) * 9502.9
+gemini_flash_lite_output_per_token: 0.02375725  # = (2.50 / 1e6) * 9502.9
+
+# Superseded 2026-10-18 (kept for reference only -- do not use): the
+# earlier gemini-2.5-flash-lite rates, $0.10 input / $0.40 output per 1M
+# tokens, i.e. gemini_flash_lite_input_per_token=0.00095029 /
+# gemini_flash_lite_output_per_token=0.00380116. That model id now 404s
+# for this project's API key ("no longer available to new users").
+
+# ---------------------------------------------------------------------------
+# Evaluation model: Gemini 3.8 Flash (swapped from Gemini 4 Argon 2026-10-18
+# — Argon has zero free-tier quota on this project's GEMINI_API_KEY; see
+# models.yaml's `evaluation` entry and docs/DECISIONS.md for the full
+# reasoning. Argon's superseded rates are kept below for reference).
 # ---------------------------------------------------------------------------
 
 # Source: https://ai.google.dev/gemini-api/docs/pricing (confirmed 2026-10-18).
-# Text/image/video input $0.10 per 1M tokens; output $0.40 per 1M tokens.
-# (Audio input is priced differently, $0.30/1M — not used here since this
-# model only ever receives text transcripts in this project, never raw audio.)
-gemini_flash_lite_input_per_token: 0.00095029   # = (0.10 / 1e6) * 9502.9
-gemini_flash_lite_output_per_token: 0.00380116  # = (0.40 / 1e6) * 9502.9
-
-# ---------------------------------------------------------------------------
-# Evaluation model: Gemini 4 Argon (substitute for the non-existent
-# "Gemini 3.5 Flash" named in BUILD_SPEC Part 2 — see docs/DECISIONS.md and
-# models.yaml's `evaluation` entry for the substitution reasoning).
-# ---------------------------------------------------------------------------
-
-# Source: https://ai.google.dev/gemini-api/docs/pricing (confirmed 2026-10-18).
-# *** TIME-LIMITED INTRODUCTORY PRICING ***
-# $2.00 / 1M input tokens and $10.00 / 1M output tokens through 2026-11-30.
-# Standard pricing from 2026-12-01 onward is $4.00 / $20.00 per 1M tokens —
-# EXACTLY DOUBLE. Revisit these two values after that date or cost reporting
-# will silently understate real spend by ~2x.
-gemini_eval_input_per_token: 0.0190058   # = (2.00 / 1e6) * 9502.9, thru 2026-11-30
-gemini_eval_output_per_token: 0.095029   # = (10.00 / 1e6) * 9502.9, thru 2026-11-30
-# Values to switch to on/after 2026-12-01 (standard pricing), left here so
+# *** TIME-LIMITED INTRODUCTORY PRICING — gemini-3.8-flash has its own,
+# different cutoff date than Argon's did *** $0.75 / 1M input tokens and
+# $3.75 / 1M output tokens through 2026-12-31. Standard pricing from
+# 2027-01-01 onward is $1.50 / $7.50 per 1M tokens — again exactly double.
+# Revisit these two values after that date or cost reporting will silently
+# understate real spend by ~2x.
+gemini_eval_input_per_token: 0.00712718   # = (0.75 / 1e6) * 9502.9, thru 2026-12-31
+gemini_eval_output_per_token: 0.03563588  # = (3.75 / 1e6) * 9502.9, thru 2026-12-31
+# Values to switch to on/after 2027-01-01 (standard pricing), left here so
 # the swap is a one-line change instead of a re-derivation:
-gemini_eval_input_per_token_standard: 0.0380116  # = (4.00 / 1e6) * 9502.9
-gemini_eval_output_per_token_standard: 0.19006   # = (20.00 / 1e6) * 9502.9
+gemini_eval_input_per_token_standard: 0.01425435  # = (1.50 / 1e6) * 9502.9
+gemini_eval_output_per_token_standard: 0.07127175 # = (7.50 / 1e6) * 9502.9
+
+# Superseded 2026-10-18 (kept for reference only -- do not use): Gemini 4
+# Argon's rates, $2.00/$10.00 per 1M tokens through 2026-11-30 then
+# $4.00/$20.00 standard, i.e. gemini_eval_input_per_token=0.0190058 /
+# gemini_eval_output_per_token=0.095029 /
+# gemini_eval_input_per_token_standard=0.0380116 /
+# gemini_eval_output_per_token_standard=0.19006. That model has zero
+# free-tier quota for this project's API key.
 # Reminder (see models.yaml note): Gemini 4 Argon's "thinking" tokens are
 # billed as output tokens. Cost the output side as
 # (usageMetadata.candidatesTokenCount + usageMetadata.thoughtsTokenCount)

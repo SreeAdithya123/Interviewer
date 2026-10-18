@@ -1,21 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Card, PreviewBadge, StatusPill } from "@/components/interview/primitives";
-import {
-  getNextStubTurn,
-  getStubTranscript,
-  getStubTurnPlan,
-  generateStubReport,
-  type StubTurnForReport,
-} from "@/lib/ai-stubs/interview-engine";
-import { finishInterview, recordInterviewTurn, startInterview } from "@/lib/interview/actions";
+import { Card, StatusPill } from "@/components/interview/primitives";
+import { finishInterview, getNextTurn, submitAnswer } from "@/lib/interview/actions";
 import { saveTurnAudio } from "@/lib/interview/audio-store";
+import type { EngineNextTurn } from "@/lib/interview/engine-client";
 import { MAX_ANSWER_SECONDS, MAX_INTERVIEW_SECONDS } from "@/lib/interview/constants";
 import { formatClock, pickSupportedMimeType } from "@/lib/interview/recording";
 import { DIFFICULTY_LABELS, INTERVIEW_TYPE_LABELS, STAGE_LABELS } from "@/lib/interview/types";
-import type { Interview, InterviewStage, QuestionSource } from "@/lib/interview/types";
+import type { Interview, InterviewStage } from "@/lib/interview/types";
 
 type Phase =
   | "starting"
@@ -29,7 +23,7 @@ type Phase =
   | "error";
 
 interface AnsweredTurn {
-  turnNumber: number;
+  turnNumber: number | null;
   stage: InterviewStage;
   questionText: string;
   transcript: string;
@@ -52,28 +46,20 @@ const ORT_VERSION = "1.14.0";
 /** Pre-recorded acknowledgement clips (BUILD_SPEC Part 4.5 step 6: "While
  * waiting, the browser plays a short pre-recorded acknowledgement clip so
  * the gap feels natural"). Real Sarvam Bulbul v3 TTS output, synthesized
- * once and bundled as static files — not a live per-turn synthesis call,
- * so this has nothing to do with the real-vs-stub engine boundary above;
- * it plays the same way once the real engine is wired in. */
+ * once and bundled as static files — not a live per-turn synthesis call. */
 const ACKNOWLEDGEMENT_CLIPS = ["/audio/ack-1.wav", "/audio/ack-2.wav", "/audio/ack-3.wav"];
 
-export function InterviewRoomClient({ interview: initialInterview }: { interview: Interview }) {
+export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const router = useRouter();
 
-  const [interview, setInterview] = useState(initialInterview);
   const [phase, setPhase] = useState<Phase>("starting");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [currentQuestion, setCurrentQuestion] = useState<{ text: string; id: string | null } | null>(null);
+  const [currentTurn, setCurrentTurn] = useState<EngineNextTurn | null>(null);
   const [answered, setAnswered] = useState<AnsweredTurn[]>([]);
   const [overallRemaining, setOverallRemaining] = useState(MAX_INTERVIEW_SECONDS);
   const [answerRemaining, setAnswerRemaining] = useState(MAX_ANSWER_SECONDS);
   const [vadStatus, setVadStatus] = useState<"unavailable" | "loading" | "active" | "off">("off");
 
-  const turnPlan = useMemo(() => getStubTurnPlan(), []);
-  const [turnIndex, setTurnIndex] = useState(0);
-  const turnIndexRef = useRef(0);
-  const askedQuestionIdsRef = useRef<string[]>([]);
-  const turnsForReportRef = useRef<StubTurnForReport[]>([]);
   // Set from the mount effect below, not here — `Date.now()` is an impure
   // call and must not run during render (react-hooks/purity).
   const sessionStartRef = useRef<number>(0);
@@ -118,80 +104,71 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
       finishedRef.current = true;
       cleanupMediaResources();
       setPhase("finishing");
-
-      const durationSeconds =
-        overrideDurationSeconds ?? Math.round((Date.now() - sessionStartRef.current) / 1000);
+      void overrideDurationSeconds; // kept for the 25-minute-cap call site below; the engine times itself
 
       try {
-        const report = generateStubReport({
-          seed: interviewId,
-          interviewType: interview.interview_type,
-          turns:
-            turnsForReportRef.current.length > 0
-              ? turnsForReportRef.current
-              : [{ turnNumber: 1, stage: "intro", questionText: "", transcript: "No answers were recorded." }],
-        });
-
-        await finishInterview({
-          interviewId,
-          durationSeconds,
-          eyeContactPct: null,
-          postureStabilityPct: null,
-          report,
-        });
-
+        await finishInterview(interviewId);
         setPhase("done");
         router.push(`/app/interview/${interviewId}/report`);
       } catch (err) {
         finishedRef.current = false;
         setPhase("error");
-        setErrorMessage(err instanceof Error ? err.message : "Could not save the report.");
+        setErrorMessage(err instanceof Error ? err.message : "Could not finish the interview.");
       }
     },
-    [cleanupMediaResources, interview.interview_type, interviewId, router],
+    [cleanupMediaResources, interviewId, router],
   );
 
-  const advanceToNextTurn = useCallback(async () => {
-    const index = turnIndexRef.current;
-    if (index >= turnPlan.length) {
-      await finishNow();
-      return;
-    }
+  /** Applies whatever the engine said comes next: either the interview is
+   * over (go finish it) or there's a real question to render. */
+  const applyNextTurn = useCallback(
+    async (next: EngineNextTurn) => {
+      if (next.interview_finished) {
+        await finishNow();
+        return;
+      }
+      setCurrentTurn(next);
+      setAnswerRemaining(MAX_ANSWER_SECONDS);
+      setPhase("awaiting_recording");
+    },
+    [finishNow],
+  );
 
-    const entry = turnPlan[index];
+  const loadNextTurn = useCallback(async () => {
     setPhase("thinking");
     setErrorMessage(null);
+    try {
+      const next = await getNextTurn(interviewId);
+      await applyNextTurn(next);
+    } catch (err) {
+      setPhase("error");
+      setErrorMessage(err instanceof Error ? err.message : "Could not load the next question.");
+    }
+  }, [applyNextTurn, interviewId]);
 
-    const { questionText, questionId } = await getNextStubTurn({
-      interviewType: interview.interview_type,
-      difficulty: interview.difficulty,
-      stage: entry.stage,
-      isFollowUp: entry.isFollowUp,
-      turnNumber: entry.turnNumber,
-      askedQuestionIds: askedQuestionIdsRef.current,
-    });
-
-    if (questionId) askedQuestionIdsRef.current.push(questionId);
-    setCurrentQuestion({ text: questionText, id: questionId });
-    setAnswerRemaining(MAX_ANSWER_SECONDS);
-    setPhase("awaiting_recording");
-  }, [finishNow, interview.difficulty, interview.interview_type, turnPlan]);
-
-  // Kick off: flip the real `interviews` row to in_progress, then load the
-  // first turn. Runs once per mount.
+  // Kick off: the engine's own `/turns/next` flips a `pending` interview to
+  // `in_progress` and opens its first stage on the first call — no separate
+  // "start" step needed. Runs once per mount. Inline async IIFE (not a call
+  // to the `loadNextTurn` callback above) so `setPhase`'s first, synchronous
+  // call lives inside a plain function the effect itself owns, not inside a
+  // separately-defined useCallback — react-hooks/set-state-in-effect flags
+  // the latter shape as a cascading-render risk even though both run
+  // identically here; a `cancelled` guard still skips a late state update
+  // from an unmounted component the same way it did before this rewrite.
   useEffect(() => {
     let cancelled = false;
     sessionStartRef.current = Date.now();
     (async () => {
+      setPhase("thinking");
+      setErrorMessage(null);
       try {
-        const started = await startInterview(interviewId);
+        const next = await getNextTurn(interviewId);
         if (cancelled) return;
-        setInterview(started);
-        await advanceToNextTurn();
+        await applyNextTurn(next);
       } catch (err) {
         if (cancelled) return;
         setPhase("error");
-        setErrorMessage(err instanceof Error ? err.message : "Could not start the interview.");
+        setErrorMessage(err instanceof Error ? err.message : "Could not load the next question.");
       }
     })();
     return () => {
@@ -202,6 +179,8 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
   }, []);
 
   // Overall 25-minute cap (BUILD_SPEC Part 4.5: "interviews at 25 minutes").
+  // The engine enforces this for real server-side too; this just moves the
+  // UI along without waiting for an answer that was never going to be submitted.
   useEffect(() => {
     const id = setInterval(() => {
       const elapsed = Math.round((Date.now() - sessionStartRef.current) / 1000);
@@ -216,59 +195,51 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
 
   const saveCurrentTurn = useCallback(
     async (blob: Blob | null, answerDurationSeconds: number) => {
-      const index = turnIndexRef.current;
-      const entry = turnPlan[index];
-      const question = currentQuestion;
-      if (!entry || !question) return;
+      const turn = currentTurn;
+      if (!turn || !turn.turn_id) return;
 
       setPhase("saving_turn");
       setErrorMessage(null);
 
-      const transcript = getStubTranscript(entry.turnNumber);
-      const questionSource: QuestionSource = entry.isFollowUp ? "follow_up" : "question_bank";
-
-      if (blob) saveTurnAudio(interviewId, entry.turnNumber, blob);
+      // In-memory, same-tab only (lib/interview/audio-store.ts) — there is
+      // no R2 upload wired into this submission path yet (the engine's
+      // submit_answer still takes raw bytes, not an R2 key; see
+      // docs/DECISIONS.md), so this is the same limitation the stub room
+      // already had, not a new one, now that R2 itself is live.
+      if (blob && turn.turn_number != null) saveTurnAudio(interviewId, turn.turn_number, blob);
 
       try {
-        await recordInterviewTurn({
-          interviewId,
-          turnNumber: entry.turnNumber,
-          stage: entry.stage,
-          questionText: question.text,
-          questionSource,
-          isFollowUp: entry.isFollowUp,
-          transcript,
-          answerDurationSeconds,
-        });
+        const form = new FormData();
+        form.append("interviewId", interviewId);
+        form.append("turnId", turn.turn_id);
+        form.append("answerDurationSeconds", String(answerDurationSeconds));
+        // The engine rejects a missing file, so an empty recording (mic
+        // granted but no audio captured) still sends a zero-byte blob
+        // rather than silently skipping the submission.
+        form.append("audio", blob ?? new Blob([], { type: "audio/webm" }), "answer.webm");
 
-        turnsForReportRef.current.push({
-          turnNumber: entry.turnNumber,
-          stage: entry.stage,
-          questionText: question.text,
-          transcript,
-        });
+        const result = await submitAnswer(form);
+
         setAnswered((prev) => [
           ...prev,
           {
-            turnNumber: entry.turnNumber,
-            stage: entry.stage,
-            questionText: question.text,
-            transcript,
-            isFollowUp: entry.isFollowUp,
+            turnNumber: turn.turn_number,
+            stage: turn.stage ?? "intro",
+            questionText: turn.question_text ?? "",
+            transcript: result.transcript,
+            isFollowUp: turn.is_follow_up,
             answerDurationSeconds,
-            hasAudio: blob !== null,
+            hasAudio: blob !== null && blob.size > 0,
           },
         ]);
 
-        turnIndexRef.current = index + 1;
-        setTurnIndex(index + 1);
-        await advanceToNextTurn();
+        await applyNextTurn(result.next_turn);
       } catch (err) {
         setPhase("error");
         setErrorMessage(err instanceof Error ? err.message : "Could not save that answer.");
       }
     },
-    [advanceToNextTurn, currentQuestion, interviewId, turnPlan],
+    [applyNextTurn, currentTurn, interviewId],
   );
 
   const stopRecording = useCallback(
@@ -384,7 +355,7 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
           <h2 className="font-headline text-lg font-semibold text-foreground">Something went wrong</h2>
           <p className="mt-2 font-body text-sm text-destructive">{errorMessage}</p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" className="btn-primary" onClick={() => advanceToNextTurn()}>
+            <button type="button" className="btn-primary" onClick={() => loadNextTurn()}>
               Try that again
             </button>
             <button
@@ -413,12 +384,9 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
             {interview.company_type ? ` · ${interview.company_type}` : ""}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusPill tone={overallRemaining < 120 ? "warning" : "neutral"}>
-            {formatClock(overallRemaining)} left
-          </StatusPill>
-          <PreviewBadge />
-        </div>
+        <StatusPill tone={overallRemaining < 120 ? "warning" : "neutral"}>
+          {formatClock(overallRemaining)} left
+        </StatusPill>
       </div>
 
       <Card>
@@ -426,16 +394,17 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
         {phase === "thinking" && <StatusLine text="Preparing the next question..." pulse />}
         {phase === "finishing" && <StatusLine text="Wrapping up and generating your report..." pulse />}
 
-        {currentQuestion && (phase === "awaiting_recording" || phase === "recording" || phase === "requesting_mic" || phase === "saving_turn") && (
+        {currentTurn && (phase === "awaiting_recording" || phase === "recording" || phase === "requesting_mic" || phase === "saving_turn") && (
           <div>
             <div className="flex items-center justify-between gap-3">
-              <StatusPill>{STAGE_LABELS[turnPlan[turnIndex]?.stage ?? "intro"]}</StatusPill>
+              <StatusPill>{STAGE_LABELS[currentTurn.stage ?? "intro"]}</StatusPill>
               <span className="font-body text-xs text-muted-foreground">
-                Question {Math.min(turnIndex + 1, turnPlan.length)} of {turnPlan.length}
+                Question {answered.length + 1}
+                {currentTurn.is_follow_up ? " · follow-up" : ""}
               </span>
             </div>
 
-            <p className="mt-4 font-body text-lg leading-body text-foreground">{currentQuestion.text}</p>
+            <p className="mt-4 font-body text-lg leading-body text-foreground">{currentTurn.question_text}</p>
 
             <div className="mt-6 flex flex-wrap items-center gap-4">
               {phase === "awaiting_recording" && (
@@ -469,7 +438,7 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
                 </>
               )}
 
-              {phase === "saving_turn" && <StatusLine text="Saving your answer..." />}
+              {phase === "saving_turn" && <StatusLine text="Transcribing and saving your answer..." />}
             </div>
           </div>
         )}
@@ -478,13 +447,9 @@ export function InterviewRoomClient({ interview: initialInterview }: { interview
       {answered.length > 0 && (
         <Card>
           <h2 className="font-headline text-lg font-semibold text-foreground">So far this interview</h2>
-          <p className="mt-1 font-body text-xs text-muted-foreground">
-            Transcripts below are preview sample text, not a transcription of your recording — see the engine note
-            at the top of this page.
-          </p>
           <ol className="mt-4 space-y-3">
-            {answered.map((turn) => (
-              <li key={turn.turnNumber} className="rounded-2xl border border-border bg-background p-4">
+            {answered.map((turn, index) => (
+              <li key={turn.turnNumber ?? index} className="rounded-2xl border border-border bg-background p-4">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-body text-xs font-medium text-muted-foreground">
                     {STAGE_LABELS[turn.stage]}

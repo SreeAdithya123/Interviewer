@@ -27,11 +27,13 @@ from typing import Any
 from app.config.loader import load_models, load_pricing
 from app.db import get_client
 
-# pricing.yaml's gemini_eval_* comment: "$2.00/$10.00 per 1M tokens through
-# 2026-11-30 ... doubles after." This is the one place that date is acted
+# pricing.yaml's gemini_eval_* comment: "$0.75/$3.75 per 1M tokens through
+# 2026-12-31 ... doubles after." This is the one place that date is acted
 # on, not just documented — see pricing.yaml for the source and the
-# standard-rate values to fall back to.
-GEMINI_EVAL_INTRO_PRICING_CUTOFF = date(2026, 11, 30)
+# standard-rate values to fall back to. (Updated 2026-10-18 for the
+# gemini-3.8-flash swap — gemini-4-argon's cutoff was 2026-11-30; this
+# model's own intro pricing runs a month longer, through 2026-12-31.)
+GEMINI_EVAL_INTRO_PRICING_CUTOFF = date(2026, 12, 31)
 
 # Groq's STT billing floor (pricing.yaml / models.yaml: "10-second minimum
 # billed length per request regardless of actual clip length").

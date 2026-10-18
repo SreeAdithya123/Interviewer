@@ -37,6 +37,32 @@ def health() -> dict[str, str]:
 # ---------------------------------------------------------------------------
 
 
+class CreateInterviewRequest(BaseModel):
+    user_id: str
+    interview_type: str
+    difficulty: str
+    target_role: str | None = None
+    company_type: str | None = None
+    college_id: str | None = None
+
+
+class CreateInterviewResponse(BaseModel):
+    id: str
+    status: str
+
+
+class ReportResponse(BaseModel):
+    status: str
+    scores: dict | None = None
+    overall_score: float | None = None
+    strengths: list[str] = []
+    weak_areas_summary: list[dict] = []
+    practice_actions: list[str] = []
+    model_id: str | None = None
+    prompt_version: str | None = None
+    error_message: str | None = None
+
+
 class NextTurnResponse(BaseModel):
     interview_finished: bool
     turn_id: str | None = None
@@ -69,11 +95,38 @@ def _raise_for_engine_error(exc: engine.InterviewEngineError) -> None:
     """Translate an engine state error into the matching HTTP status."""
     if isinstance(exc, (engine.InterviewNotFoundError, engine.TurnNotFoundError)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-    if isinstance(exc, engine.AnswerTooLongError):
+    if isinstance(exc, (engine.AnswerTooLongError, engine.NoActiveTemplateError)):
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     if isinstance(exc, engine.InvalidInterviewStateError):
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.post("/interviews", response_model=CreateInterviewResponse)
+async def post_create_interview(body: CreateInterviewRequest) -> CreateInterviewResponse:
+    try:
+        result = await engine.create_interview(
+            user_id=body.user_id,
+            interview_type=body.interview_type,
+            difficulty=body.difficulty,
+            target_role=body.target_role,
+            company_type=body.company_type,
+            college_id=body.college_id,
+        )
+    except engine.InterviewEngineError as exc:
+        _raise_for_engine_error(exc)
+        raise  # unreachable: _raise_for_engine_error always raises
+    return CreateInterviewResponse(id=result.interview_id, status=result.status)
+
+
+@app.get("/interviews/{interview_id}/report", response_model=ReportResponse)
+async def get_interview_report(interview_id: str) -> ReportResponse:
+    try:
+        result = await engine.get_report(interview_id)
+    except engine.InterviewEngineError as exc:
+        _raise_for_engine_error(exc)
+        raise  # unreachable: _raise_for_engine_error always raises
+    return ReportResponse(**asdict(result))
 
 
 @app.post("/interviews/{interview_id}/turns/next", response_model=NextTurnResponse)
