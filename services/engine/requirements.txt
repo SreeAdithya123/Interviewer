@@ -1,4 +1,10 @@
 fastapi
+python-multipart
 uvicorn[standard]
 pydantic
 python-dotenv
+httpx
+pyyaml
+supabase
+boto3
+upstash-redis

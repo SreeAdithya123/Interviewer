@@ -5,3 +5,10 @@ target-version = "py312"
 [tool.ruff.lint]
 # Default rule set (pycodestyle + pyflakes) is enabled implicitly; nothing
 # extra selected for Phase 0.
+
+[tool.pytest.ini_options]
+# Lets `async def test_...()` functions run directly, without a
+# @pytest.mark.asyncio on every one — needed from this phase on since the
+# provider clients (app/providers/*) are async. Added alongside
+# pytest-asyncio in requirements-dev.txt.
+asyncio_mode = "auto"

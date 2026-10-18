@@ -1,0 +1,14 @@
+# Dependencies for eval/cost_report.py (and future eval/ harness scripts).
+#
+# Both are already installed in services/engine/.venv, since the engine
+# itself depends on supabase-py and python-dotenv -- reusing that venv needs
+# no extra install:
+#   services/engine/.venv/Scripts/python.exe eval/cost_report.py   (Windows)
+#   services/engine/.venv/bin/python eval/cost_report.py           (macOS/Linux)
+#
+# This file exists so eval/ can also run fully standalone, e.g.:
+#   python -m venv eval/.venv
+#   eval/.venv/Scripts/pip install -r eval/requirements.txt   (Windows)
+#   eval/.venv/bin/pip install -r eval/requirements.txt       (macOS/Linux)
+supabase>=2.33.0
+python-dotenv>=1.2.4

@@ -1,0 +1,161 @@
+# Vyoman Interviewer engine: pinned provider model IDs.
+#
+# BUILD_SPEC.md Part 2: "Model names, SDK methods and API shapes change often.
+# Before writing any provider integration, check the provider's current
+# official docs and pin exact model IDs in one config file." This is that file.
+#
+# Every entry below was confirmed directly against the provider's own current
+# documentation (never a third-party aggregator/pricing-comparison site) on
+# 2026-10-18. Re-verify before relying on an entry that is more than a few
+# months old — see the `confirmed` date on each one.
+#
+# Load this file at startup; never hardcode a model id string in provider
+# client code.
+
+stt_primary:
+  provider: groq
+  model_id: whisper-large-v3
+  # Confirmed 2026-10-18 against https://console.groq.com/docs/speech-to-text
+  # (Groq's own docs page, fetched live — not a scraper/aggregator).
+  # Matches BUILD_SPEC Part 2's "Groq Whisper Large v3 (primary)" exactly.
+  confirmed: "2026-10-18"
+  source: https://console.groq.com/docs/speech-to-text
+  notes: >
+    Multilingual, supports both transcription and translation; Groq's docs
+    recommend this one (over whisper-large-v3-turbo) for error-sensitive,
+    multilingual use, which fits interview transcripts. whisper-large-v3-turbo
+    exists as a cheaper/faster alternative (see pricing.yaml comment) if p95
+    STT latency ever becomes the bottleneck for the 2.5s/4s turn-latency
+    targets in BUILD_SPEC Part 4.5 — swap model_id only, no code change needed.
+  api_base: https://api.groq.com/openai/v1
+  endpoint: /audio/transcriptions
+
+stt_fallback:
+  provider: sarvam
+  model_id: "saaras:v4"
+  # RESOLVES a real naming conflict flagged in the task: a prior search found
+  # conflicting claims of "Saarika" vs "Saaras" as Sarvam's STT model.
+  # Confirmed definitively from Sarvam's own API reference on 2026-10-18:
+  #   - https://docs.sarvam.ai/api-reference-docs/speech-to-text/transcribe
+  #     (the /speech-to-text endpoint's own default/recommended model is
+  #     saaras:v4; "saaras:v3" is also offered)
+  #   - https://docs.sarvam.ai/api-reference-docs/getting-started/models/saarika
+  #     explicitly states Saarika (saarika:v2.5) is now LEGACY and will be
+  #     deprecated soon, and points users to Saaras for transcription instead.
+  # Saarika is NOT the current model to integrate against. Do not use it.
+  confirmed: "2026-10-18"
+  source: https://docs.sarvam.ai/api-reference-docs/speech-to-text/transcribe
+  notes: >
+    saaras:v4 is Sarvam's current default/recommended STT model (per
+    https://docs.sarvam.ai/api-reference-docs/getting-started/models/saaras).
+    Use mode handling only matters on saaras:v3 (transcribe/translate/
+    verbatim/translit/codemix); saaras:v4 has no `mode` param and always
+    transcribes. Use language_code="unknown" to auto-detect, or a BCP-47 code
+    (e.g. "en-IN", "hi-IN") when known. Diarization is Batch-API-only and not
+    needed for this project's single-speaker answer clips.
+  api_base: https://api.sarvam.ai
+  endpoint: /speech-to-text
+
+tts:
+  provider: sarvam
+  model_id: "bulbul:v3"
+  # Confirmed 2026-10-18 against
+  # https://docs.sarvam.ai/api-reference-docs/text-to-speech/convert — this is
+  # the API's own default model id when `model` is omitted, and matches
+  # BUILD_SPEC Part 2's "Sarvam Bulbul v3" exactly.
+  confirmed: "2026-10-18"
+  source: https://docs.sarvam.ai/api-reference-docs/text-to-speech/convert
+  notes: >
+    A newer, cheaper "bulbul:v4-flash" model now also exists (see Sarvam's
+    pricing page) but BUILD_SPEC Part 2 pins v3 by name, so v3 is what's
+    configured here; this is a one-line swap later if cost pressure or a
+    deliberate decision calls for it — record that in docs/DECISIONS.md if
+    it happens, don't swap it silently. Default speaker is "shubh" (lowercase,
+    case-sensitive); default sample rate 22050Hz; max 2,500 chars per request
+    (chunk longer answers/follow-ups before calling). One of 11 Indic
+    language_code values is required (no "unknown"/auto-detect for TTS).
+  api_base: https://api.sarvam.ai
+  endpoint: /text-to-speech
+
+conversation:
+  provider: gemini
+  model_id: gemini-2.5-flash-lite
+  # Confirmed 2026-10-18 against https://ai.google.dev/gemini-api/docs/models
+  # (direct Gemini API model catalog, not Vertex AI). Matches BUILD_SPEC
+  # Part 2's "Gemini 2.5 Flash-Lite" exactly. Still listed (not deprecated)
+  # as of this date, though Google's models page now steers *new* projects
+  # toward gemini-3.5-flash-lite or gemini-3.8-flash — BUILD_SPEC pins 2.5
+  # Flash-Lite by name, so that pin is kept here; flag a model bump as its
+  # own decision in docs/DECISIONS.md rather than drifting silently.
+  confirmed: "2026-10-18"
+  source: https://ai.google.dev/gemini-api/docs/models
+  notes: >
+    Used for in-stage follow-up generation only (the state machine controls
+    stage order; the LLM never does, per BUILD_SPEC Part 4.5). Also the
+    natural choice for resume parsing with native PDF input (BUILD_SPEC
+    Part 4.3/4.4) since no separate model was specified for that in Part 2 —
+    this was not a separate research target in this task, so treat that as
+    a reasonable default, not a pinned decision.
+  api_base: https://generativelanguage.googleapis.com/v1beta
+  endpoint: /models/{model}:generateContent
+
+evaluation:
+  provider: gemini
+  model_id: gemini-4-argon
+  # SUBSTITUTION — "Gemini 3.5 Flash" (the exact name in BUILD_SPEC Part 2)
+  # does NOT exist on https://ai.google.dev/gemini-api/docs/models as of
+  # 2026-10-18. The nearest real names are gemini-3.5-flash-lite (a cheaper
+  # lite variant, not "Flash") and gemini-3.8-flash. Google's naming has
+  # moved on since the spec was written. See docs/DECISIONS.md for the full
+  # substitution reasoning; gemini-4-argon was chosen as the current
+  # best-available reasoning-capable model for this evaluation/scoring task.
+  confirmed: "2026-10-18"
+  source: https://ai.google.dev/gemini-api/docs/models/gemini-4-argon
+  configurable: true  # BUILD_SPEC Part 2: "configurable, chosen by the eval harness"
+  notes: >
+    Google's own description: "our flagship reasoning model, built for
+    complex software engineering, deep mathematical and scientific problem
+    solving, autonomous multi-step agents." Went GA via the Gemini API on
+    2026-10-13 (five days before this was confirmed) per Google's own
+    changelog coverage — new enough that build agents should sanity-check
+    availability/quota in their own GCP/AI-Studio project before relying on
+    it in production, and should keep gemini-3.8-flash (also stable, also
+    supports thinking at low/medium/high) wired as a documented, easy
+    fallback via the same `configurable` flag if Argon proves rate-limited
+    or flaky. Supports structured output (responseSchema) — use it for the
+    evaluation JSON schema in BUILD_SPEC Part 4.5 step 8. Thinking/reasoning
+    tokens are billed as OUTPUT tokens (see pricing.yaml note) — sum
+    candidatesTokenCount + thoughtsTokenCount from usageMetadata when
+    computing cost, not candidatesTokenCount alone.
+  api_base: https://generativelanguage.googleapis.com/v1beta
+  endpoint: /models/{model}:generateContent
+
+embedding:
+  provider: gemini
+  model_id: gemini-embedding-2
+  # Confirmed 2026-10-18 against https://ai.google.dev/gemini-api/docs/embeddings
+  # — Google's own docs call this "the latest model" and the first
+  # multimodal embedding model in the Gemini API; gemini-embedding-001
+  # (text-only, previous generation) remains available but is not the
+  # current recommendation.
+  confirmed: "2026-10-18"
+  source: https://ai.google.dev/gemini-api/docs/embeddings
+  output_dimensionality: 768
+  notes: >
+    *** DIMENSION FLAG (read before wiring this up) ***
+    gemini-embedding-2's DEFAULT output dimension is 3072, NOT 768. It does
+    not natively produce 768-dim vectors unless explicitly asked. However,
+    768 is one of Google's own officially recommended truncation sizes
+    (128-3072 is the full configurable range; 768/1536/3072 are the
+    recommended stops), so this is NOT a schema mismatch requiring a
+    migration — it only requires every embedContent call to explicitly pass
+    `output_dimensionality: 768` in the request body. supabase/migrations/
+    20261015120004_knowledge_base_and_chat.sql already documents
+    kb_chunks.embedding as `vector(768)` "(current Gemini text-embedding
+    dimension)", confirming this was anticipated. If a build agent ever
+    omits output_dimensionality, Google will return 3072-dim vectors and
+    every insert into kb_chunks will fail (or silently truncate, if the
+    client mishandles it) — treat this parameter as required, not optional,
+    in the embeddings client.
+  api_base: https://generativelanguage.googleapis.com/v1beta
+  endpoint: /models/{model}:embedContent

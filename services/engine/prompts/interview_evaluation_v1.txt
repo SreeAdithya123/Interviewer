@@ -1,0 +1,63 @@
+You are grading a completed {interview_type} practice interview for a
+{target_role} candidate (target company type: {company_type}, difficulty:
+{difficulty}). Your evaluation will be shown directly to the student and to
+their college placement office, so it must be accurate, specific, and never
+invented. Nothing here may be fabricated: no score, quote, strength, weak
+area, or practice action may describe something that did not happen in the
+transcript below.
+
+Full transcript (one entry per turn, in order; "answer" is the transcribed
+speech, exactly as captured — it may contain transcription errors, which is
+not the candidate's fault and should not be penalized):
+{transcript_turns}
+
+Browser-measured delivery aggregates for the whole interview (null means the
+measurement was not available and must not be guessed at):
+- eye_contact_pct: {eye_contact_pct}
+- posture_stability_pct: {posture_stability_pct}
+
+Score the interview on exactly these five dimensions, each 0-100:
+1. communication_clarity — how clearly the candidate expressed ideas.
+2. answer_structure — whether answers had a clear shape (e.g. situation,
+   action, result for behavioral answers; a logical build-up for technical
+   ones), not just clarity of language.
+3. technical_depth — depth and correctness of technical content, scaled to
+   the stated difficulty; for a non-technical stage, score based on the
+   depth of reasoning shown instead.
+4. relevance — how directly each answer addressed the question actually
+   asked.
+5. confidence_and_delivery — using the transcript's language (hedging,
+   filler, assertiveness) together with eye_contact_pct and
+   posture_stability_pct when they are not null; when both are null, score
+   from the transcript's language alone and say so in the evidence.
+
+For every dimension, give the numeric score AND an "evidence" list of one or
+more short, exact quotes copied verbatim from the transcript above that
+justify that score. Never paraphrase a quote and never cite a quote that is
+not a direct substring of an "answer" field in the transcript.
+
+Also produce:
+- overall_score: 0-100, your holistic judgement (not a plain average of the
+  five dimensions, though it should be consistent with them).
+- strengths: a short list of specific, evidenced strengths.
+- weak_areas: a list of objects, each {{"skill": "<short skill name>",
+  "severity": "low"|"medium"|"high", "notes": "<why, with evidence>"}} —
+  every weak area must be something this transcript actually shows, not a
+  generic suggestion.
+- practice_actions: exactly 3 concrete, actionable next steps the candidate
+  can practice before their next interview, each tied to a weak area above.
+
+Respond with strict JSON only, matching exactly this shape, no other text:
+{{
+  "scores": {{
+    "communication_clarity": {{"score": <0-100>, "evidence": ["<quote>", ...]}},
+    "answer_structure": {{"score": <0-100>, "evidence": ["<quote>", ...]}},
+    "technical_depth": {{"score": <0-100>, "evidence": ["<quote>", ...]}},
+    "relevance": {{"score": <0-100>, "evidence": ["<quote>", ...]}},
+    "confidence_and_delivery": {{"score": <0-100>, "evidence": ["<quote>", ...]}}
+  }},
+  "overall_score": <0-100>,
+  "strengths": ["<specific strength>", ...],
+  "weak_areas": [{{"skill": "<skill>", "severity": "low"|"medium"|"high", "notes": "<why>"}}, ...],
+  "practice_actions": ["<action 1>", "<action 2>", "<action 3>"]
+}}

@@ -1,0 +1,148 @@
+# Vyoman Interviewer engine: provider unit prices, in PAISE (1 INR = 100
+# paise), matching usage_events.cost_paise (an `int` column — see
+# supabase/migrations/20261015120005_billing_and_ops.sql).
+#
+# Convention: every *_per_<unit> value below is "paise per one <unit>" as a
+# float. To cost a usage event:
+#   cost_paise = round(quantity_in_<unit> * price.*_per_<unit>)
+# Sum per-event cost_paise into usage_events.cost_paise (and roll up into
+# interviews.total_cost_paise). Compute with floats/decimals, round once at
+# the very end — don't round per-token/per-character and accumulate rounding
+# error over thousands of tiny provider calls.
+#
+# All rates confirmed directly against each provider's own official pricing
+# page on 2026-10-18 (never a third-party aggregator — several of those were
+# already found to disagree with each other and with the providers' own
+# pages before this file was written).
+#
+# USD -> INR conversion (needed for every USD-only provider: Groq, Gemini,
+# Cloudflare R2, Upstash):
+#   1 USD = 95.029 INR = 9502.9 paise
+#   Source: https://www.xe.com (mid-market rate), captured 2026-10-18 03:13
+#   UTC. This is a point-in-time approximation, not a contracted rate — it
+#   will drift. Revisit this constant periodically (e.g. each billing
+#   reconciliation) rather than treating it as permanent; a +/-5% swing in
+#   USD/INR is a +/-5% swing in every USD-denominated row below. Sarvam's
+#   prices are already published in INR and need no conversion.
+usd_to_inr_rate: 95.029
+usd_to_inr_confirmed: "2026-10-18"
+usd_to_inr_source: https://www.xe.com
+
+# ---------------------------------------------------------------------------
+# Speech to text
+# ---------------------------------------------------------------------------
+
+# Groq Whisper (models.yaml: stt_primary). Official rate: $0.111 / audio hour.
+# Source: https://console.groq.com/docs/speech-to-text (confirmed 2026-10-18).
+# Minimum billed length is 10 seconds per request even if the clip is
+# shorter — apply that floor before multiplying by this rate, or costs for
+# short answers will be understated.
+groq_stt_per_second: 0.293006  # = (0.111 / 3600) USD/sec * 9502.9 paise/USD
+
+# Same page, for reference / as a documented cheaper fallback if latency or
+# cost ever calls for switching stt_primary.model_id to whisper-large-v3-turbo
+# (not currently selected in models.yaml): $0.04 / audio hour.
+groq_stt_turbo_per_second: 0.105588  # = (0.04 / 3600) * 9502.9
+
+# Sarvam STT, saaras:v4 (models.yaml: stt_fallback). Official Pay-as-you-go
+# rate: INR 29.40 / hour (both real-time and batch, non-diarized).
+# Source: https://www.sarvam.ai/api-pricing (confirmed 2026-10-18).
+sarvam_stt_per_second: 0.816667  # = (29.40 / 3600) INR/sec * 100 paise/INR
+
+# Same page: Sarvam batch STT WITH diarization costs more (INR 35.40/hour).
+# Not used by this project (interview answers are single-speaker clips) —
+# kept here only so a build agent doesn't have to re-derive it if that ever
+# changes.
+sarvam_stt_diarized_per_second: 0.983333  # = (35.40 / 3600) * 100
+
+# ---------------------------------------------------------------------------
+# Text to speech
+# ---------------------------------------------------------------------------
+
+# Sarvam Bulbul v3 (models.yaml: tts). Official Pay-as-you-go rate:
+# INR 3.00 per 1,000 characters (real-time, streaming, WebSocket).
+# Source: https://www.sarvam.ai/api-pricing (confirmed 2026-10-18).
+sarvam_tts_per_character: 0.3  # = (3.00 / 1000) INR/char * 100 paise/INR
+
+# ---------------------------------------------------------------------------
+# Conversation model: Gemini 2.5 Flash-Lite
+# ---------------------------------------------------------------------------
+
+# Source: https://ai.google.dev/gemini-api/docs/pricing (confirmed 2026-10-18).
+# Text/image/video input $0.10 per 1M tokens; output $0.40 per 1M tokens.
+# (Audio input is priced differently, $0.30/1M — not used here since this
+# model only ever receives text transcripts in this project, never raw audio.)
+gemini_flash_lite_input_per_token: 0.00095029   # = (0.10 / 1e6) * 9502.9
+gemini_flash_lite_output_per_token: 0.00380116  # = (0.40 / 1e6) * 9502.9
+
+# ---------------------------------------------------------------------------
+# Evaluation model: Gemini 4 Argon (substitute for the non-existent
+# "Gemini 3.5 Flash" named in BUILD_SPEC Part 2 — see docs/DECISIONS.md and
+# models.yaml's `evaluation` entry for the substitution reasoning).
+# ---------------------------------------------------------------------------
+
+# Source: https://ai.google.dev/gemini-api/docs/pricing (confirmed 2026-10-18).
+# *** TIME-LIMITED INTRODUCTORY PRICING ***
+# $2.00 / 1M input tokens and $10.00 / 1M output tokens through 2026-11-30.
+# Standard pricing from 2026-12-01 onward is $4.00 / $20.00 per 1M tokens —
+# EXACTLY DOUBLE. Revisit these two values after that date or cost reporting
+# will silently understate real spend by ~2x.
+gemini_eval_input_per_token: 0.0190058   # = (2.00 / 1e6) * 9502.9, thru 2026-11-30
+gemini_eval_output_per_token: 0.095029   # = (10.00 / 1e6) * 9502.9, thru 2026-11-30
+# Values to switch to on/after 2026-12-01 (standard pricing), left here so
+# the swap is a one-line change instead of a re-derivation:
+gemini_eval_input_per_token_standard: 0.0380116  # = (4.00 / 1e6) * 9502.9
+gemini_eval_output_per_token_standard: 0.19006   # = (20.00 / 1e6) * 9502.9
+# Reminder (see models.yaml note): Gemini 4 Argon's "thinking" tokens are
+# billed as output tokens. Cost the output side as
+# (usageMetadata.candidatesTokenCount + usageMetadata.thoughtsTokenCount)
+# * gemini_eval_output_per_token, not candidatesTokenCount alone, or
+# reasoning-heavy evaluation calls will be undercosted.
+
+# ---------------------------------------------------------------------------
+# Embeddings: Gemini Embedding 2 (gemini-embedding-2, output_dimensionality=768
+# — see models.yaml's *** DIMENSION FLAG *** note)
+# ---------------------------------------------------------------------------
+
+# Source: https://ai.google.dev/gemini-api/docs/pricing (confirmed 2026-10-18).
+# $0.20 per 1M input tokens for text. Embeddings have no separate "output
+# token" price (the embedding vector itself isn't billed as output tokens).
+# Note the page lists other, much higher per-token rates for image/audio/
+# video embedding input ($0.45 / $6.50 / $12.00 per 1M) — not used here,
+# since this project only embeds text (KB chunks, chat queries).
+gemini_embedding_per_token: 0.00190058  # = (0.20 / 1e6) * 9502.9
+
+# ---------------------------------------------------------------------------
+# Cloudflare R2 (audio/resume/report object storage)
+# ---------------------------------------------------------------------------
+
+# Source: https://developers.cloudflare.com/r2/pricing/ (confirmed 2026-10-18).
+# Standard storage class. Free tier (10 GB-month storage, 1M Class A ops/mo,
+# 10M Class B ops/mo) is not modeled here — apply it as a monthly credit in
+# the cost dashboard if/when it matters, not as a change to these per-unit
+# rates.
+r2_storage_per_gb_month: 142.5435      # = 0.015 USD/GB-month * 9502.9
+r2_class_a_per_request: 0.04276305     # = (4.50 / 1e6) * 9502.9 -- writes/lists (PutObject, ListObjects, etc.)
+r2_class_b_per_request: 0.00342104     # = (0.36 / 1e6) * 9502.9 -- reads (GetObject, HeadObject, etc.)
+# CONFIRMED STILL TRUE as of 2026-10-18: R2 has NO egress fee. Data
+# transferred out via the Workers API, the S3 API, or r2.dev domains is
+# free. (A different, metered service you connect to a bucket could still
+# charge you on its own side, but R2 itself does not.)
+r2_egress_per_gb: 0.0
+
+# ---------------------------------------------------------------------------
+# Upstash Redis (rate limiting / quotas / caching)
+# ---------------------------------------------------------------------------
+
+# Source: https://upstash.com/pricing (confirmed 2026-10-18). Upstash Redis
+# is per-request (command) pricing on the Pay-as-you-go plan, not a fixed
+# monthly plan, for this project's scale — fixed plans exist but are a flat
+# monthly price, not a usable per-unit rate for usage_events rows.
+# Free tier (not modeled below, apply as a monthly credit if it matters):
+# 500K commands/month, 250MB data, 10GB bandwidth/month.
+upstash_redis_per_request: 0.0190058   # = (0.20 / 100_000) USD/cmd * 9502.9
+# Storage beyond the first free 1GB, and bandwidth beyond the first free
+# 200GB/month. Included for completeness; this project's Redis usage is
+# rate-limit counters and small cache keys, so these should rarely bind.
+upstash_redis_storage_per_gb_month: 2375.725   # = 0.25 * 9502.9 (first 1GB free)
+upstash_redis_bandwidth_per_gb_overage: 285.087  # = 0.03 * 9502.9 (first 200GB/mo free)
