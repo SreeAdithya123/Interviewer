@@ -1,5 +1,17 @@
 # Progress
 
+## Cross-cutting: real transactional email, live — done
+
+Supabase Auth was sending OTP emails through its built-in mailer, which turned out to be capped at **2 emails/hour** on this project (confirmed via the Supabase Management API's `config/auth` endpoint, `rate_limit_email_sent: 2`) — explaining why login testing kept failing to deliver. Fixed for real, not just patched around:
+
+- Configured Supabase Auth's custom SMTP to send through **Resend** (`smtp.resend.com:587`, user `resend`, password = the Resend API key) via the Supabase Management API (the founder provided a personal access token for this — used narrowly, only to read/patch this one project's `config/auth`, never written to disk or committed).
+- The founder's domain `vyoman.tech` was added and DNS-verified in Resend (DKIM at `resend._domainkey.vyoman.tech`; MX + SPF on a `send.vyoman.tech` subdomain via CNAME to Resend's infrastructure — the existing root-domain Hostinger mail/SPF setup was untouched and doesn't conflict, since Resend's records live on the `send` subdomain, not the root). Sender is `sreeadithya@vyoman.tech`.
+- Before the domain was verified, Resend's API itself enforced "only send to your own account email" (sandbox mode) and then "domain not verified" — both confirmed directly by testing real sends, not assumed. After verification, a real end-to-end test (`POST /api/demo-requests` with a different recipient) succeeded with no warning, and `rate_limit_email_sent` was raised from 2 to 30/hour (Supabase blocks raising this at all until custom SMTP exists — also confirmed directly, the API returns a 401 explaining exactly that).
+- `RESEND_API_KEY`, `DEMO_REQUEST_NOTIFY_EMAIL`, `DEMO_REQUEST_FROM_EMAIL` added to `apps/web/.env.local` (gitignored, never committed).
+- Test rows created while verifying delivery were deleted from the live `demo_requests` table afterward.
+
+**What this unblocks:** OTP login should now deliver to any email address, not just the founder's own; the Book-a-Demo notification email (built in Phase 2, previously untestable) now genuinely sends. **What's still manual-only:** nobody has click-tested an actual OTP magic-link login end to end in a real browser yet — that still needs a human to receive and click the email.
+
 ## Phase 0: Scaffold — done
 
 **What was built**
