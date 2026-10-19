@@ -30,6 +30,7 @@ from app.providers.gemini import (
     embed_text,
     evaluate_interview,
     generate_followup,
+    rewrite_resume_bullet,
 )
 
 _FOLLOWUP_URL = f"{GEMINI_CONVERSATION_API_BASE}{GEMINI_CONVERSATION_PATH}"
@@ -310,3 +311,68 @@ async def test_embed_text_raises_on_http_error() -> None:
         await embed_text("some text")
 
     assert exc_info.value.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# rewrite_resume_bullet (BUILD_SPEC Part 4.3) -- uses the conversation
+# model/endpoint, same as generate_followup, hence reusing _FOLLOWUP_URL.
+# ---------------------------------------------------------------------------
+
+
+@respx.mock
+async def test_rewrite_resume_bullet_keeps_the_existing_number() -> None:
+    respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response(
+            {"kind": "rewritten", "text": "Reduced page load time by 40% through lazy-loading images."}
+        )
+    )
+
+    result = await rewrite_resume_bullet("made the site load 40% faster by lazy loading images")
+
+    assert result.kind == "rewritten"
+    assert result.question is None
+    assert "40%" in result.text
+    assert result.model_id == GEMINI_CONVERSATION_MODEL_ID
+
+
+@respx.mock
+async def test_rewrite_resume_bullet_asks_for_a_metric_when_none_given() -> None:
+    respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response(
+            {"kind": "needs_metric", "question": "How many users did this feature reach?"}
+        )
+    )
+
+    result = await rewrite_resume_bullet("built a new onboarding flow")
+
+    assert result.kind == "needs_metric"
+    assert result.text is None
+    assert "users" in result.question
+
+
+@respx.mock
+async def test_rewrite_resume_bullet_raises_rather_than_passing_along_an_invented_number() -> None:
+    """The one rule BUILD_SPEC Part 4.3 insists on most: "It must never
+    invent numbers." Simulates Gemini itself breaking that rule (a real,
+    if hopefully rare, LLM failure mode -- prompt-following is never a
+    hard guarantee) and proves the code-level digit-containment check
+    catches it rather than silently handing a fabricated metric back to
+    a student's real resume."""
+    respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response(
+            {"kind": "rewritten", "text": "Increased user engagement by 25% through redesigned onboarding."}
+        )
+    )
+
+    with pytest.raises(GeminiError, match="introduced digits not present"):
+        await rewrite_resume_bullet("built a new onboarding flow that users liked")
+
+
+@respx.mock
+async def test_rewrite_resume_bullet_raises_on_unknown_kind() -> None:
+    respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response({"kind": "something_else", "text": "x"})
+    )
+
+    with pytest.raises(GeminiError, match="unknown 'kind'"):
+        await rewrite_resume_bullet("built a thing")

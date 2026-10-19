@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { Sparkles, Check, X, Trash2 } from "lucide-react";
-import { rewriteBullet, applyMetricAnswer, type RewriteResult } from "@/lib/ai-stubs/rewrite-bullet";
+import { rewriteBullet, applyMetricAnswer, type RewriteResult } from "@/lib/resume/actions";
 
 /**
  * One editable resume bullet (an experience/project "highlight") with an
  * inline "Rewrite with AI" action. Per docs/BUILD_SPEC.md Part 4.3, the
- * rewrite must never invent a number — the stub in lib/ai-stubs/rewrite-bullet.ts
- * asks a specific follow-up question instead when the bullet has none, and
- * this component collects that answer before showing a rewrite.
+ * rewrite must never invent a number — the real engine
+ * (services/engine/app/resume/engine.py, via Gemini) asks a specific
+ * follow-up question instead when the bullet has none, and this
+ * component collects that answer before showing a rewrite.
  */
 export function BulletField({
   value,
@@ -44,7 +45,7 @@ export function BulletField({
 
   function accept() {
     if (result?.kind === "rewritten") {
-      onChange(result.text.replace(/\s*\[Preview rewrite.*?\]\s*$/, ""));
+      onChange(result.text);
     }
     setResult(null);
     setMetricAnswer("");
@@ -70,7 +71,7 @@ export function BulletField({
             type="button"
             onClick={handleRewrite}
             disabled={status === "loading" || !value.trim()}
-            title="Rewrite with AI (preview)"
+            title="Rewrite with AI"
             className="rounded-lg border border-border bg-card p-2 text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
           >
             <Sparkles className="h-4 w-4" strokeWidth={1.75} />
@@ -114,11 +115,6 @@ export function BulletField({
 
       {result && result.kind === "rewritten" && (
         <div className="rounded-xl border border-primary/30 bg-primary/5 p-3">
-          <div className="mb-1 flex items-center gap-1.5">
-            <span className="rounded-full bg-accent/15 px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-wide text-accent">
-              Preview &mdash; not yet connected to the real engine
-            </span>
-          </div>
           <p className="font-body text-sm text-foreground">{result.text}</p>
           <div className="mt-2 flex gap-2">
             <button

@@ -1,0 +1,32 @@
+You are helping a student improve one bullet point on their resume for a
+job application. A strong resume bullet follows an "action verb + what you
+did + measurable result" structure.
+
+The student's current bullet point:
+"""
+{bullet}
+"""
+
+Rules, strictly enforced:
+- Never invent a number, statistic, percentage, duration, or any other
+  fact that is not already present in the bullet text above. You may
+  rephrase, restructure, and strengthen the wording, but every number and
+  fact in your rewrite must already be in the input. This is the single
+  most important rule — breaking it is worse than not rewriting at all.
+- If the bullet already contains at least one number or measurable result,
+  rewrite it into a tighter "action verb + what + measurable result"
+  sentence, keeping that exact number unchanged (never round it, never
+  add a unit or scale it wasn't given in).
+- If the bullet contains NO number or measurable result at all, do not
+  rewrite it and do not guess one. Instead, ask one short, specific
+  question that would help the student supply a real metric — pick the
+  question based on what the bullet is actually about (e.g. "How many
+  users did this affect?", "How much time did this save?", "What
+  percentage improvement?"), not a generic one.
+- Keep a rewrite to one sentence, resume-appropriate tone, no first-person
+  pronouns ("I"/"we"), starting with a strong action verb.
+
+Respond with strict JSON only, matching exactly one of these two shapes,
+no other text:
+{{"kind": "rewritten", "text": "<the rewritten bullet>"}}
+{{"kind": "needs_metric", "question": "<the specific question to ask>"}}

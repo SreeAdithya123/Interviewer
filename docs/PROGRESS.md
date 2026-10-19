@@ -1,5 +1,15 @@
 # Progress
 
+## Phase 3 (started): real AI bullet rewriting, end to end
+
+Surveyed the existing resume code first rather than assuming nothing existed: the resume **builder** (`ResumeBuilderClient.tsx`, `ResumeForm.tsx`, `pdf.ts`) was already real — writes straight to the real `resumes` table, real client-side PDF export. Only one piece was stubbed: AI bullet rewriting (`BulletField.tsx` → `lib/ai-stubs/rewrite-bullet.ts`). The **scanner** (parsing, JD match, bullet quality, formatting risks) is still fully stubbed — separate, larger work, not started.
+
+**Built**: `prompts/resume_bullet_rewrite_v1.txt` + `gemini.rewrite_resume_bullet` (same conversation model/endpoint as interview follow-ups) + `app/resume/engine.py` (new module, cost-logs under `feature='resume_parse'`) + `POST /resume/bullet/rewrite`. BUILD_SPEC Part 4.3's one hard rule — "must never invent numbers" — is enforced in code, not just prompt text: `_assert_no_invented_digits` raises if a "rewritten" response contains any digit not already in the input bullet. `apps/web/lib/resume/actions.ts` (new Server Action, same `getCurrentProfile()` pattern as interviews) replaces the stub; `BulletField.tsx` needed only its import line changed, since the real response matches the stub's `RewriteResult` shape exactly. Removed the stale "preview" badge/copy this surfaced.
+
+**Verified**: new tests (6: 4 in `test_gemini.py` including the anti-hallucination fixture test BUILD_SPEC explicitly asks for, 2 for the cost-logging wrapper) — full suite now 84, `ruff` exits 0. Confirmed live against real Gemini: a metric-free bullet gets a real, contextually specific question back; a bullet with real numbers gets rewritten with those exact numbers preserved; a real `usage_events` row lands under `feature='resume_parse'`. `tsc --noEmit` exits 0 in `apps/web`.
+
+**Still pending**: the resume scanner (PDF parsing via Gemini native PDF input, JD matching, bullet quality, formatting risks — BUILD_SPEC Part 4.4) is the larger remaining piece of Phase 3, not started in this pass.
+
 ## Phase 2: RLS isolation tested for real against the live database — PASS
 
 The last open Phase 2 acceptance criterion ("RLS tests proving a student cannot read another student's data and a college admin cannot read another college's data") had only ever been satisfied by reading the policy SQL, never actually run. Ran it for real: `set local role authenticated; set local request.jwt.claim.sub = '<uuid>'` (the standard way `auth.uid()` is tested directly in Postgres, since that's literally what it reads) against the live project, as a throwaway second college + college_admin, the two real student profiles, and the real platform_admin. Saved as `supabase/tests/rls_isolation_test.sql` so it's re-runnable, not a one-off.

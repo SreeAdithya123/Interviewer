@@ -70,8 +70,10 @@ GEMINI_EMBEDDING_OUTPUT_DIMENSIONALITY: int = _EMBEDDING.get("output_dimensional
 _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 FOLLOWUP_PROMPT_VERSION = "interview_followup_v1"
 EVALUATION_PROMPT_VERSION = "interview_evaluation_v1"
+BULLET_REWRITE_PROMPT_VERSION = "resume_bullet_rewrite_v1"
 _FOLLOWUP_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{FOLLOWUP_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 _EVALUATION_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{EVALUATION_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
+_BULLET_REWRITE_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{BULLET_REWRITE_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
@@ -101,6 +103,24 @@ class FollowupResult:
     by ``app/costs/tracking.py`` into one ``usage_events`` row."""
 
     follow_up_question: str | None
+    model_id: str
+    input_tokens: int
+    output_tokens: int
+    thoughts_tokens: int = 0
+    raw_response: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BulletRewriteResult:
+    """Result of one resume-bullet-rewrite call (BUILD_SPEC Part 4.3).
+    Exactly one of `text`/`question` is set, matching `kind` — mirrors
+    apps/web/lib/ai-stubs/rewrite-bullet.ts's `RewriteResult` shape
+    byte-for-byte so the frontend's existing UI contract needs no
+    changes when this swaps in for that stub."""
+
+    kind: str  # 'rewritten' | 'needs_metric'
+    text: str | None
+    question: str | None
     model_id: str
     input_tokens: int
     output_tokens: int
@@ -253,6 +273,81 @@ async def generate_followup(
         thoughts_tokens=thoughts_tokens,
         raw_response=payload,
     )
+
+
+async def rewrite_resume_bullet(bullet: str) -> BulletRewriteResult:
+    """Rewrite one resume bullet into "action verb + result" form, or ask
+    for a metric if the bullet has none (BUILD_SPEC Part 4.3: "It must
+    never invent numbers. If a bullet lacks a metric, it asks the student
+    a specific question... and uses their answer.").
+
+    Uses the same cheap conversation model as in-interview follow-ups
+    (this is a short, low-stakes rewrite, not a reasoning task) — the
+    anti-hallucination guarantee comes entirely from
+    ``prompts/resume_bullet_rewrite_v1.txt``'s own rules plus a defensive
+    post-check here: every digit in a "rewritten" response must already
+    appear in the input bullet, or this raises rather than silently
+    passing along an invented number. A student submitting the metric
+    answer the UI asked for is just another call to this same function
+    with that answer folded into the bullet text (apps/web's
+    ``applyMetricAnswer`` does exactly that) — there is no separate
+    "apply the metric" call on this side.
+    """
+    prompt = _BULLET_REWRITE_PROMPT_TEMPLATE.format(bullet=bullet)
+    payload = await _post_generate_content(
+        api_base=_CONVERSATION["api_base"],
+        path_template=_CONVERSATION["endpoint"],
+        model_id=GEMINI_CONVERSATION_MODEL_ID,
+        prompt=prompt,
+    )
+    parsed = _parse_json_object(_extract_candidate_text(payload))
+
+    kind = parsed.get("kind")
+    text = parsed.get("text")
+    question = parsed.get("question")
+    if kind == "rewritten":
+        if not isinstance(text, str) or not text.strip():
+            raise GeminiError(f"Gemini bullet-rewrite response missing 'text' for kind=rewritten: {parsed!r}")
+        _assert_no_invented_digits(original=bullet, rewritten=text)
+        question = None
+    elif kind == "needs_metric":
+        if not isinstance(question, str) or not question.strip():
+            raise GeminiError(f"Gemini bullet-rewrite response missing 'question' for kind=needs_metric: {parsed!r}")
+        text = None
+    else:
+        raise GeminiError(f"Gemini bullet-rewrite response has an unknown 'kind': {parsed!r}")
+
+    input_tokens, output_tokens, thoughts_tokens = _usage_tokens(payload)
+    return BulletRewriteResult(
+        kind=kind,
+        text=text,
+        question=question,
+        model_id=GEMINI_CONVERSATION_MODEL_ID,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        thoughts_tokens=thoughts_tokens,
+        raw_response=payload,
+    )
+
+
+def _assert_no_invented_digits(*, original: str, rewritten: str) -> None:
+    """BUILD_SPEC Part 4.3's "must never invent numbers" is the one rule
+    in this whole file enforced in code, not just in the prompt text — a
+    prompt is a strong steer, not a guarantee, and a fabricated number on
+    a resume is exactly the kind of invented claim BUILD_SPEC Part 1
+    says this product may never produce. Digit-set containment (every
+    digit character the rewrite uses must appear somewhere in the
+    original) is a deliberately blunt check: it cannot catch a reordered
+    digit sequence that reuses the same characters, but it reliably
+    catches the real failure mode (a number that wasn't there at all),
+    and a looser check would let that through."""
+    original_digits = {ch for ch in original if ch.isdigit()}
+    rewritten_digits = {ch for ch in rewritten if ch.isdigit()}
+    if not rewritten_digits.issubset(original_digits):
+        raise GeminiError(
+            f"Gemini bullet rewrite introduced digits not present in the original bullet "
+            f"(original={original!r}, rewritten={rewritten!r})"
+        )
 
 
 async def evaluate_interview(

@@ -20,6 +20,8 @@ from pydantic import BaseModel
 
 from app.internal.manual_test_harness import router as internal_test_interview_router
 from app.interview import engine
+from app.providers.gemini import GeminiError
+from app.resume import engine as resume_engine
 
 app = FastAPI(title="Vyoman Interviewer Engine")
 
@@ -175,3 +177,34 @@ async def post_finish_interview(interview_id: str) -> FinishInterviewResponse:
         _raise_for_engine_error(exc)
         raise  # unreachable: _raise_for_engine_error always raises
     return FinishInterviewResponse()
+
+
+# ---------------------------------------------------------------------------
+# Resume (BUILD_SPEC Part 4.3) — bullet rewriting only so far; the resume
+# scanner (Part 4.4) is separate, larger, not-yet-built work.
+# ---------------------------------------------------------------------------
+
+
+class RewriteBulletRequest(BaseModel):
+    bullet: str
+    user_id: str
+    college_id: str | None = None
+
+
+class RewriteBulletResponse(BaseModel):
+    kind: str
+    text: str | None = None
+    question: str | None = None
+
+
+@app.post("/resume/bullet/rewrite", response_model=RewriteBulletResponse)
+async def post_rewrite_bullet(body: RewriteBulletRequest) -> RewriteBulletResponse:
+    if not body.bullet.strip():
+        raise HTTPException(status_code=422, detail="bullet must not be empty")
+    try:
+        result = await resume_engine.rewrite_bullet(
+            body.bullet, user_id=body.user_id, college_id=body.college_id
+        )
+    except GeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return RewriteBulletResponse(kind=result.kind, text=result.text, question=result.question)
