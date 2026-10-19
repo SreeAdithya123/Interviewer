@@ -21,5 +21,5 @@ export default async function ResumeScannerPage() {
     .select("*")
     .order("updated_at", { ascending: false });
 
-  return <ScannerClient userId={profile.id} resumes={(data ?? []) as ResumeRow[]} />;
+  return <ScannerClient resumes={(data ?? []) as ResumeRow[]} />;
 }

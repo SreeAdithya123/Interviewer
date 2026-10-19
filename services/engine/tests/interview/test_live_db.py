@@ -20,12 +20,18 @@ import hashlib
 import uuid
 
 from app.costs.tracking import compute_cost_paise
-from app.db import get_client
+from app.db import get_client, reset_client
 from app.interview import engine
 from app.providers import gemini
 
 
 async def test_engine_writes_real_rows_against_the_live_supabase_project(monkeypatch):
+    # Each test function gets its own event loop under pytest-asyncio's
+    # default "auto" mode, but app/db.py caches its AsyncClient at module
+    # scope -- without this, a client created (and bound to an HTTP
+    # connection pool) by another live-db test on an already-closed loop
+    # could leak into this one and fail with "Event loop is closed".
+    await reset_client()
     client = await get_client()
     suffix = uuid.uuid4().hex[:12]
     scoped_role = f"pytest-live-db-smoke-{suffix}"

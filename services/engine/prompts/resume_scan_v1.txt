@@ -1,0 +1,65 @@
+You are reviewing a resume for an Indian college student preparing for
+campus placements. Be honest and specific — colleges and students pay for
+accurate, trustworthy feedback, never flattery or invented claims.
+
+{resume_source}
+
+{job_description_section}
+
+Produce exactly these checks. Do not produce a single overall "ATS score"
+or percentage anywhere in your response — no such universal score exists,
+and inventing one would be exactly the kind of fabricated metric this
+review must never produce.
+
+1. parse_health: "status" is "clean" if the resume's sections and content
+   came through legibly, "partial" if some sections were unclear or
+   incomplete, "poor" if large parts could not be read at all (e.g. a
+   scanned image with no extractable text, or a badly corrupted file).
+   "sections_detected" and "sections_missing" list standard resume
+   sections (Contact info, Education, Experience, Projects, Skills,
+   Certificates, Awards) by name. "notes" is 1-3 short, specific
+   observations about extraction quality itself (not resume quality).
+
+2. jd_match: only meaningful when a job description was given above. List
+   "skills_present" (skills/technologies the resume already shows
+   evidence of) and "skills_missing" (skills the job description asks for
+   that the resume doesn't show), each missing skill paired with
+   "suggested_section" naming where to add it (e.g. "Skills section" or
+   "a Projects bullet about X"). Only list a skill as present if the
+   resume text actually supports it — never infer a skill from job title
+   or vibes alone.
+
+3. bullet_quality: for each real bullet point in the resume's Experience
+   and Projects sections (use the student's own exact wording in "text"),
+   list any "issues" (e.g. no measurable result, starts with a weak verb,
+   too vague) and an optional one-sentence "suggestion" for how to
+   improve it. A suggestion must NEVER invent a number, statistic, or
+   fact that is not already in that exact bullet — if a bullet has no
+   measurable result, the suggestion must say so and ask the student to
+   add one themselves, never propose a specific number. This rule is the
+   most important rule in this entire task.
+
+4. formatting_risks: list concrete layout/formatting risks that could
+   hurt machine readability or a human skim — multi-column layouts,
+   tables, text embedded in images, inconsistent dates, missing contact
+   info, overly long document length, etc. Each risk has a "severity"
+   ("low", "medium", or "high") and a specific "message" naming the
+   actual issue found (or state there are no significant risks, if
+   genuinely none exist — do not invent risks to fill space).
+
+Respond with strict JSON only, matching exactly this shape, no other text:
+{{
+  "parsed_resume": {{
+    "basics": {{"name": "", "label": "", "email": "", "phone": "", "location": "", "summary": "", "profiles": [{{"network": "", "url": ""}}]}},
+    "education": [{{"institution": "", "area": "", "studyType": "", "startDate": "", "endDate": "", "score": ""}}],
+    "work": [{{"name": "", "position": "", "startDate": "", "endDate": "", "summary": "", "highlights": [""]}}],
+    "projects": [{{"name": "", "description": "", "url": "", "keywords": [""], "highlights": [""]}}],
+    "skills": [{{"name": "", "keywords": [""]}}],
+    "certificates": [{{"name": "", "issuer": "", "date": "", "url": ""}}],
+    "awards": [{{"title": "", "date": "", "awarder": "", "summary": ""}}]
+  }},
+  "parse_health": {{"status": "clean", "sections_detected": [""], "sections_missing": [""], "notes": [""]}},
+  "jd_match": {{"skills_present": [""], "skills_missing": [{{"skill": "", "suggested_section": ""}}], "notes": [""]}} or null,
+  "bullet_quality": {{"bullets": [{{"section": "", "text": "", "issues": [""], "suggestion": "" or null}}], "overall_notes": [""]}},
+  "formatting_risks": {{"risks": [{{"severity": "low", "message": ""}}]}}
+}}

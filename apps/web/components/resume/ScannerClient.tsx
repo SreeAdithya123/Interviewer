@@ -2,10 +2,16 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, CheckCircle2, FileText, Info, ScanLine, Upload, X } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { scanResume, type ScanResumeResult } from "@/lib/ai-stubs/scan-resume";
+import { AlertTriangle, CheckCircle2, FileText, ScanLine, Upload, X } from "lucide-react";
+import { scanResume, type ScanResumeResult } from "@/lib/resume/actions";
 import type { ResumeRow } from "@/lib/resume/types";
+
+async function fileToBase64(file: File): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
 
 type Source = "upload" | "saved";
 
@@ -15,7 +21,7 @@ const SEVERITY_STYLES: Record<string, string> = {
   low: "border-border bg-muted/40 text-muted-foreground",
 };
 
-export function ScannerClient({ userId, resumes }: { userId: string; resumes: ResumeRow[] }) {
+export function ScannerClient({ resumes }: { resumes: ResumeRow[] }) {
   const [source, setSource] = useState<Source>(resumes.length > 0 ? "saved" : "upload");
   const [selectedResumeId, setSelectedResumeId] = useState<string>(resumes[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
@@ -33,37 +39,14 @@ export function ScannerClient({ userId, resumes }: { userId: string; resumes: Re
     setResult(null);
 
     try {
-      const supabase = createClient();
       const selectedResume = source === "saved" ? resumes.find((r) => r.id === selectedResumeId) ?? null : null;
-
-      let jobDescriptionId: string | null = null;
-      if (jdText.trim().length > 0) {
-        const { data: jd, error: jdError } = await supabase
-          .from("job_descriptions")
-          .insert({ user_id: userId, raw_text: jdText.trim() })
-          .select("id")
-          .single();
-        if (jdError) throw jdError;
-        jobDescriptionId = jd.id as string;
-      }
+      const pdfBase64 = source === "upload" && file ? await fileToBase64(file) : null;
 
       const scanResult = await scanResume({
-        resumeData: selectedResume?.data ?? null,
-        uploadedFileName: file?.name ?? null,
-        uploadedFileSizeBytes: file?.size ?? null,
+        resumeId: selectedResume?.id ?? null,
+        pdfBase64,
         jobDescriptionText: jdText.trim() || null,
       });
-
-      const { error: rpcError } = await supabase.rpc("create_stub_resume_scan", {
-        p_resume_id: selectedResume?.id ?? null,
-        p_job_description_id: jobDescriptionId,
-        p_parsed_resume: scanResult.parsed_resume,
-        p_parse_health: scanResult.parse_health,
-        p_jd_match: scanResult.jd_match,
-        p_bullet_quality: scanResult.bullet_quality,
-        p_formatting_risks: scanResult.formatting_risks,
-      });
-      if (rpcError) throw rpcError;
 
       setResult(scanResult);
       setStatus("idle");
@@ -153,7 +136,7 @@ export function ScannerClient({ userId, resumes }: { userId: string; resumes: Re
                 >
                   <Upload className="h-7 w-7 text-muted-foreground" strokeWidth={1.5} />
                   <span className="font-body text-sm font-medium text-foreground">Click to choose a PDF</span>
-                  <span className="font-body text-xs text-muted-foreground">We only read the filename and size for now &mdash; full parsing needs the real engine.</span>
+                  <span className="font-body text-xs text-muted-foreground">Read directly by the engine &mdash; nothing is stored except the scan&rsquo;s results.</span>
                 </button>
               )}
               <input
@@ -192,13 +175,6 @@ export function ScannerClient({ userId, resumes }: { userId: string; resumes: Re
 
       {result && (
         <div className="space-y-5">
-          <div className="flex items-center gap-2 rounded-2xl border border-dashed border-accent/40 bg-accent/5 px-4 py-2.5">
-            <Info className="h-4 w-4 text-accent" strokeWidth={1.75} />
-            <p className="font-body text-xs font-medium text-accent">
-              Preview &mdash; these checks use mock analysis until the real engine (Gemini) is connected. Saved to your history as-is.
-            </p>
-          </div>
-
           <ResultCard title="1. Parse health" icon={<FileText className="h-4 w-4" strokeWidth={1.75} />}>
             <p className="font-body text-sm capitalize text-foreground">
               Status: <span className="font-semibold">{result.parse_health.status}</span>

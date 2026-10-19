@@ -1,0 +1,17 @@
+-- Removes the Phase 1 keyless-slice bridge from
+-- 20261017160707_resume_scan_stub_bridge.sql now that its own header
+-- comment's stated condition has been met: "When the real engine (service
+-- role) is wired up in Phase 1, this function should be dropped and
+-- replaced with a real engine-side insert, matching
+-- interviews/interview_reports/etc." That engine-side insert now exists
+-- (services/engine/app/resume/engine.py's scan_resume(), called from the
+-- new POST /resume/scan route) and writes resume_scans directly with the
+-- service-role client, which RLS already expected to be the only writer
+-- (20261015120007_row_level_security.sql: "A scan is produced by the
+-- engine (service role, which bypasses RLS) ... so there is no
+-- insert/update policy for the authenticated role").
+--
+-- apps/web no longer calls this RPC (components/resume/ScannerClient.tsx
+-- now calls the real Server Action instead), so dropping it removes dead,
+-- unauthenticated-insert-shaped surface area rather than breaking a caller.
+drop function if exists public.create_stub_resume_scan(uuid, uuid, jsonb, jsonb, jsonb, jsonb, jsonb);

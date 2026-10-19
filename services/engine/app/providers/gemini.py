@@ -71,9 +71,11 @@ _PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 FOLLOWUP_PROMPT_VERSION = "interview_followup_v1"
 EVALUATION_PROMPT_VERSION = "interview_evaluation_v1"
 BULLET_REWRITE_PROMPT_VERSION = "resume_bullet_rewrite_v1"
+SCAN_PROMPT_VERSION = "resume_scan_v1"
 _FOLLOWUP_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{FOLLOWUP_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 _EVALUATION_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{EVALUATION_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 _BULLET_REWRITE_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{BULLET_REWRITE_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
+_SCAN_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{SCAN_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 
 _DEFAULT_TIMEOUT_SECONDS = 30.0
 
@@ -149,22 +151,59 @@ class EvaluationResult:
     raw_response: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class ScanResult:
+    """Result of one resume-scan call (BUILD_SPEC Part 4.4) — a parsed
+    JSON-Resume-shaped document plus the four honest checks (parse_health,
+    jd_match, bullet_quality, formatting_risks). Field names match
+    ``apps/web/lib/ai-stubs/scan-resume.ts``'s ``ScanResumeResult`` shape
+    byte-for-byte so the frontend's existing contract needs no changes.
+    ``jd_match`` is ``None`` exactly when no job description was given —
+    the prompt is told to skip that check entirely rather than invent one."""
+
+    parsed_resume: dict[str, Any]
+    parse_health: dict[str, Any]
+    jd_match: dict[str, Any] | None
+    bullet_quality: dict[str, Any]
+    formatting_risks: dict[str, Any]
+    model_id: str
+    input_tokens: int
+    output_tokens: int
+    thoughts_tokens: int = 0
+    raw_response: dict[str, Any] = field(default_factory=dict)
+
+
 def _auth_headers(api_key: str) -> dict[str, str]:
     return {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
 
 async def _post_generate_content(
-    *, api_base: str, path_template: str, model_id: str, prompt: str
+    *, api_base: str, path_template: str, model_id: str, prompt: str, pdf_base64: str | None = None
 ) -> dict[str, Any]:
     """POST one ``generateContent`` call with JSON-mode on, against the
     given model's own configured ``api_base``/``endpoint`` (each of
     ``conversation``/``evaluation`` carries its own in
     ``app/config/models.yaml``, even though both currently happen to be the
-    same string — never hardcoded here)."""
+    same string — never hardcoded here).
+
+    ``pdf_base64``, when given, is sent as an inline ``inlineData`` part
+    ahead of the text prompt — BUILD_SPEC Part 2/4.4's "Gemini with native
+    PDF input" for resume scanning. Confirmed against a real live call
+    (not just docs, which currently steer new document-processing
+    examples toward a newer, different Interactions API endpoint this
+    codebase does not use elsewhere): plain ``generateContent`` with a
+    classic ``contents.parts[].inlineData.{mimeType,data}`` part still
+    works today and correctly reads the document, keeping this call
+    consistent with every other one in this file rather than introducing
+    a second HTTP shape for one caller."""
     api_key = os.environ.get("GEMINI_API_KEY", "")
     url = f"{api_base}{path_template.format(model=model_id)}"
+    parts: list[dict[str, Any]] = []
+    if pdf_base64 is not None:
+        parts.append({"inlineData": {"mimeType": "application/pdf", "data": pdf_base64}})
+    parts.append({"text": prompt})
     body = {
-        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+        "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"responseMimeType": "application/json"},
     }
     try:
@@ -308,7 +347,7 @@ async def rewrite_resume_bullet(bullet: str) -> BulletRewriteResult:
     if kind == "rewritten":
         if not isinstance(text, str) or not text.strip():
             raise GeminiError(f"Gemini bullet-rewrite response missing 'text' for kind=rewritten: {parsed!r}")
-        _assert_no_invented_digits(original=bullet, rewritten=text)
+        _assert_no_invented_digits(original=bullet, candidate=text, context="bullet rewrite")
         question = None
     elif kind == "needs_metric":
         if not isinstance(question, str) or not question.strip():
@@ -330,24 +369,123 @@ async def rewrite_resume_bullet(bullet: str) -> BulletRewriteResult:
     )
 
 
-def _assert_no_invented_digits(*, original: str, rewritten: str) -> None:
+def _assert_no_invented_digits(*, original: str, candidate: str, context: str) -> None:
     """BUILD_SPEC Part 4.3's "must never invent numbers" is the one rule
     in this whole file enforced in code, not just in the prompt text — a
     prompt is a strong steer, not a guarantee, and a fabricated number on
     a resume is exactly the kind of invented claim BUILD_SPEC Part 1
     says this product may never produce. Digit-set containment (every
-    digit character the rewrite uses must appear somewhere in the
-    original) is a deliberately blunt check: it cannot catch a reordered
-    digit sequence that reuses the same characters, but it reliably
-    catches the real failure mode (a number that wasn't there at all),
-    and a looser check would let that through."""
+    digit character `candidate` uses must appear somewhere in `original`)
+    is a deliberately blunt check: it cannot catch a reordered digit
+    sequence that reuses the same characters, but it reliably catches the
+    real failure mode (a number that wasn't there at all), and a looser
+    check would let that through.
+
+    Shared by `rewrite_resume_bullet` (one bullet rewritten in place) and
+    `scan_resume` (one `suggestion` per bullet, checked against that same
+    bullet's own text) — `context` only shapes the error message."""
     original_digits = {ch for ch in original if ch.isdigit()}
-    rewritten_digits = {ch for ch in rewritten if ch.isdigit()}
-    if not rewritten_digits.issubset(original_digits):
+    candidate_digits = {ch for ch in candidate if ch.isdigit()}
+    if not candidate_digits.issubset(original_digits):
         raise GeminiError(
-            f"Gemini bullet rewrite introduced digits not present in the original bullet "
-            f"(original={original!r}, rewritten={rewritten!r})"
+            f"Gemini {context} introduced digits not present in the original text "
+            f"(original={original!r}, candidate={candidate!r})"
         )
+
+
+def _assert_scan_bullet_suggestions_have_no_invented_digits(bullet_quality: dict[str, Any]) -> None:
+    """Applies `_assert_no_invented_digits` to every bullet's own
+    `suggestion` in a resume-scan response — each suggestion is checked
+    only against that one bullet's own `text`, never the whole resume, so
+    a legitimate number already on a *different* bullet can't leak in as
+    if it were earned here."""
+    for bullet in bullet_quality.get("bullets", []):
+        suggestion = bullet.get("suggestion")
+        if not suggestion:
+            continue
+        _assert_no_invented_digits(
+            original=str(bullet.get("text", "")),
+            candidate=suggestion,
+            context="resume-scan bullet suggestion",
+        )
+
+
+async def scan_resume(
+    *,
+    resume_data: dict[str, Any] | None = None,
+    pdf_base64: str | None = None,
+    job_description_text: str | None = None,
+) -> ScanResult:
+    """Run the four honest checks from BUILD_SPEC Part 4.4 against either
+    an already-structured resume (`resume_data`, from the in-app builder)
+    or a raw upload (`pdf_base64`) — exactly one of the two, never both,
+    never neither.
+
+    Uses the conversation model with native PDF input (see
+    `_post_generate_content`'s docstring for why that's a real, verified
+    call shape and not a guess) and `prompts/resume_scan_v1.txt`, which
+    hard-bans a single "ATS score" and demands the student's own exact
+    wording for every bullet. The one rule enforced in code rather than
+    just the prompt — same principle as `rewrite_resume_bullet` — is that
+    a bullet's rewrite `suggestion` can never introduce a digit absent
+    from that bullet's own text.
+    """
+    if (resume_data is None) == (pdf_base64 is None):
+        raise ValueError("scan_resume needs exactly one of resume_data or pdf_base64, not both or neither")
+
+    if resume_data is not None:
+        resume_source = (
+            "The student's resume, already structured as JSON (built directly in the "
+            "resume editor, not parsed from a file):\n" + json.dumps(resume_data, ensure_ascii=False)
+        )
+    else:
+        resume_source = (
+            "The student's resume is attached as a PDF document. Read its actual "
+            "content directly; do not guess at sections you cannot see."
+        )
+
+    if job_description_text:
+        job_description_section = (
+            'The student is targeting this job description — use it for the jd_match '
+            'check:\n"""\n' + job_description_text + '\n"""'
+        )
+    else:
+        job_description_section = (
+            "No job description was given — return jd_match as null and skip that check entirely."
+        )
+
+    prompt = _SCAN_PROMPT_TEMPLATE.format(
+        resume_source=resume_source,
+        job_description_section=job_description_section,
+    )
+    payload = await _post_generate_content(
+        api_base=_CONVERSATION["api_base"],
+        path_template=_CONVERSATION["endpoint"],
+        model_id=GEMINI_CONVERSATION_MODEL_ID,
+        prompt=prompt,
+        pdf_base64=pdf_base64,
+    )
+    parsed = _parse_json_object(_extract_candidate_text(payload))
+
+    for required_field in ("parsed_resume", "parse_health", "bullet_quality", "formatting_risks"):
+        if required_field not in parsed:
+            raise GeminiError(f"Gemini resume-scan response missing '{required_field}': {parsed!r}")
+
+    _assert_scan_bullet_suggestions_have_no_invented_digits(parsed["bullet_quality"])
+
+    input_tokens, output_tokens, thoughts_tokens = _usage_tokens(payload)
+    return ScanResult(
+        parsed_resume=parsed["parsed_resume"],
+        parse_health=parsed["parse_health"],
+        jd_match=parsed.get("jd_match"),
+        bullet_quality=parsed["bullet_quality"],
+        formatting_risks=parsed["formatting_risks"],
+        model_id=GEMINI_CONVERSATION_MODEL_ID,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        thoughts_tokens=thoughts_tokens,
+        raw_response=payload,
+    )
 
 
 async def evaluate_interview(

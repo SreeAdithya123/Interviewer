@@ -31,6 +31,7 @@ from app.providers.gemini import (
     evaluate_interview,
     generate_followup,
     rewrite_resume_bullet,
+    scan_resume,
 )
 
 _FOLLOWUP_URL = f"{GEMINI_CONVERSATION_API_BASE}{GEMINI_CONVERSATION_PATH}"
@@ -376,3 +377,122 @@ async def test_rewrite_resume_bullet_raises_on_unknown_kind() -> None:
 
     with pytest.raises(GeminiError, match="unknown 'kind'"):
         await rewrite_resume_bullet("built a thing")
+
+
+def _scan_response_payload(
+    *,
+    bullets: list[dict] | None = None,
+    jd_match: dict | None = None,
+) -> dict:
+    return {
+        "parsed_resume": {"basics": {"name": "Jordan Lee"}, "education": [], "work": [], "projects": []},
+        "parse_health": {"status": "clean", "sections_detected": ["Contact info"], "sections_missing": [], "notes": []},
+        "jd_match": jd_match,
+        "bullet_quality": {
+            "bullets": bullets if bullets is not None else [],
+            "overall_notes": ["Looks solid overall."],
+        },
+        "formatting_risks": {"risks": []},
+    }
+
+
+@respx.mock
+async def test_scan_resume_requires_exactly_one_of_resume_data_or_pdf_base64() -> None:
+    with pytest.raises(ValueError, match="exactly one"):
+        await scan_resume(resume_data=None, pdf_base64=None)
+
+    with pytest.raises(ValueError, match="exactly one"):
+        await scan_resume(resume_data={"basics": {}}, pdf_base64="ZmFrZQ==")
+
+
+@respx.mock
+async def test_scan_resume_sends_pdf_as_inline_data_part_ahead_of_the_prompt() -> None:
+    route = respx.post(_FOLLOWUP_URL).mock(return_value=_generate_content_response(_scan_response_payload()))
+
+    result = await scan_resume(resume_data=None, pdf_base64="ZmFrZSBwZGYgYnl0ZXM=", job_description_text=None)
+
+    sent_body = json.loads(route.calls.last.request.content)
+    parts = sent_body["contents"][0]["parts"]
+    assert parts[0]["inlineData"] == {"mimeType": "application/pdf", "data": "ZmFrZSBwZGYgYnl0ZXM="}
+    assert "text" in parts[1]
+    assert "No job description was given" in parts[1]["text"]
+    assert result.parsed_resume["basics"]["name"] == "Jordan Lee"
+    assert result.jd_match is None
+    assert result.model_id == GEMINI_CONVERSATION_MODEL_ID
+
+
+@respx.mock
+async def test_scan_resume_sends_structured_resume_data_and_job_description_as_text() -> None:
+    route = respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response(
+            _scan_response_payload(jd_match={"skills_present": ["python"], "skills_missing": [], "notes": []})
+        )
+    )
+
+    resume_data = {"basics": {"name": "Asha Rao"}, "work": [{"highlights": ["Led a team of 3 engineers"]}]}
+    result = await scan_resume(resume_data=resume_data, pdf_base64=None, job_description_text="Looking for a Python backend engineer.")
+
+    sent_body = json.loads(route.calls.last.request.content)
+    parts = sent_body["contents"][0]["parts"]
+    assert len(parts) == 1  # no inlineData part when resume_data is given, not pdf_base64
+    assert "Asha Rao" in parts[0]["text"]
+    assert "Python backend engineer" in parts[0]["text"]
+    assert result.jd_match == {"skills_present": ["python"], "skills_missing": [], "notes": []}
+
+
+@respx.mock
+async def test_scan_resume_raises_rather_than_passing_along_an_invented_number_in_a_bullet_suggestion() -> None:
+    """Same principle as the bullet-rewrite digit check, applied per
+    bullet here: a scan's rewrite `suggestion` must never introduce a
+    digit that bullet's own `text` doesn't already have."""
+    route = respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response(
+            _scan_response_payload(
+                bullets=[
+                    {
+                        "section": "Projects",
+                        "text": "Built a recommendation engine for an e-commerce site",
+                        "issues": ["No measurable result"],
+                        "suggestion": "Built a recommendation engine that increased sales by 30%",
+                    }
+                ]
+            )
+        )
+    )
+
+    with pytest.raises(GeminiError, match="introduced digits not present"):
+        await scan_resume(resume_data={"basics": {}}, pdf_base64=None, job_description_text=None)
+
+    assert route.called
+
+
+@respx.mock
+async def test_scan_resume_allows_a_suggestion_that_reuses_the_bullets_own_digits() -> None:
+    respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response(
+            _scan_response_payload(
+                bullets=[
+                    {
+                        "section": "Projects",
+                        "text": "Built a tool used by 30 students",
+                        "issues": [],
+                        "suggestion": "Consider specifying what the 30 students used it for.",
+                    }
+                ]
+            )
+        )
+    )
+
+    result = await scan_resume(resume_data={"basics": {}}, pdf_base64=None, job_description_text=None)
+
+    assert result.bullet_quality["bullets"][0]["suggestion"].startswith("Consider")
+
+
+@respx.mock
+async def test_scan_resume_raises_on_response_missing_a_required_field() -> None:
+    payload = _scan_response_payload()
+    del payload["formatting_risks"]
+    respx.post(_FOLLOWUP_URL).mock(return_value=_generate_content_response(payload))
+
+    with pytest.raises(GeminiError, match="missing 'formatting_risks'"):
+        await scan_resume(resume_data={"basics": {}}, pdf_base64=None, job_description_text=None)

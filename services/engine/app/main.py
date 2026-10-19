@@ -180,8 +180,7 @@ async def post_finish_interview(interview_id: str) -> FinishInterviewResponse:
 
 
 # ---------------------------------------------------------------------------
-# Resume (BUILD_SPEC Part 4.3) — bullet rewriting only so far; the resume
-# scanner (Part 4.4) is separate, larger, not-yet-built work.
+# Resume (BUILD_SPEC Part 4.3/4.4): bullet rewriting and the scanner.
 # ---------------------------------------------------------------------------
 
 
@@ -208,3 +207,51 @@ async def post_rewrite_bullet(body: RewriteBulletRequest) -> RewriteBulletRespon
     except GeminiError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return RewriteBulletResponse(kind=result.kind, text=result.text, question=result.question)
+
+
+class ScanResumeRequest(BaseModel):
+    user_id: str
+    college_id: str | None = None
+    resume_id: str | None = None
+    job_description_id: str | None = None
+    resume_data: dict | None = None
+    pdf_base64: str | None = None
+    job_description_text: str | None = None
+
+
+class ScanResumeResponse(BaseModel):
+    scan_id: str
+    parsed_resume: dict
+    parse_health: dict
+    jd_match: dict | None = None
+    bullet_quality: dict
+    formatting_risks: dict
+
+
+@app.post("/resume/scan", response_model=ScanResumeResponse)
+async def post_scan_resume(body: ScanResumeRequest) -> ScanResumeResponse:
+    """BUILD_SPEC Part 4.4. Exactly one of `resume_data`/`pdf_base64` must
+    be given — `resume_engine.scan_resume` raises `ValueError` otherwise,
+    translated to 422 here rather than letting FastAPI 500 on it."""
+    try:
+        result = await resume_engine.scan_resume(
+            user_id=body.user_id,
+            college_id=body.college_id,
+            resume_id=body.resume_id,
+            job_description_id=body.job_description_id,
+            resume_data=body.resume_data,
+            pdf_base64=body.pdf_base64,
+            job_description_text=body.job_description_text,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return ScanResumeResponse(
+        scan_id=result.scan_id,
+        parsed_resume=result.parsed_resume,
+        parse_health=result.parse_health,
+        jd_match=result.jd_match,
+        bullet_quality=result.bullet_quality,
+        formatting_risks=result.formatting_risks,
+    )
