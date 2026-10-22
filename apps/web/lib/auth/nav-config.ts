@@ -20,6 +20,7 @@ export interface NavItem {
 // append it to the right one; don't introduce a second nav config file.
 const STUDENT_NAV: NavItem[] = [
   { label: "Interview", href: "/app/interview" },
+  { label: "Drives", href: "/app/drives" },
   { label: "Resume", href: "/app/resume" },
   { label: "Chat", href: "/app/chat" },
   { label: "History", href: "/app/history" },
