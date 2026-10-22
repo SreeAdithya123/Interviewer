@@ -537,3 +537,31 @@ See `docs/DECISIONS.md`'s new top entry for the full reasoning behind using `htt
 - Remote edge response on `https://vyoman-interviewer.sreeadithya-ndd.workers.dev/app/interview/[id]` verified clean without 500 or React #441 error.
 - Pushed to `origin/main` (commit `875e549`).
 
+## Step 2: Campus Placement Drive Management Operating System
+
+**What was built**
+- **Data Model & Service (`apps/web/lib/drives/types.ts`, `apps/web/lib/drives/store.ts`)**:
+  - Full model for campus recruitment drives: Company Name, Role, Package/CTC, Location, Application Deadline, Cutoff Score %, Target Batches, Allowed Departments, and Multi-Round assessment pipeline.
+  - Pre-seeded flagship campus placement drives: *Amazon SDE-1 2026*, *TCS Digital 2026*, and *Deloitte USI Technology Analyst*.
+  - Eligibility engine evaluating student batch, department, and live interview readiness score cutoff against drive criteria.
+  - Candidate recruitment pipeline tracking statuses: `eligible`, `applied`, `round_1_cleared`, `shortlisted`, `selected`, `not_qualified`.
+- **Drives Hub (`apps/web/app/app/drives/page.tsx`, `DrivesClient.tsx`)**:
+  - Student view: Live eligibility verification badge ("Eligible ✅", "Cutoff Not Met ⚠"), and 1-click "Start Drive Assessment ⚡" button launching customized technical coding assessments directly.
+  - College Admin / TPO view: Drive pipeline stats (Total Drives, Active Drives, Registered Candidates, Shortlisted Offers) and "+ Create Placement Drive" modal with complete validation.
+- **Recruitment Leaderboard & Recruiter Export (`apps/web/app/app/drives/[id]/page.tsx`, `DriveDetailClient.tsx`)**:
+  - Real-time candidate leaderboard with Overall Score, Coding Score %, Communication Score %, and Integrity Index (anti-cheat verification).
+  - 1-Click candidate shortlisting actions ("★ Shortlist", "✓ Select").
+  - 1-Click Recruiter CSV Export (`downloadCsv`) generating formatted applicant spreadsheets for corporate recruiters.
+- **Nav Integration (`apps/web/lib/auth/nav-config.ts`)**:
+  - Added "Drives" link across `student`, `college_admin`, and `platform_admin` app shells.
+- **Unit Test Suite (`apps/web/lib/drives/store.test.ts`)**:
+  - 5 tests covering store retrieval, eligibility evaluation, candidate status mutation, and drive creation.
+
+**What was verified**
+- `vitest run`: all 14 web tests passing.
+- `tsc --noEmit`: 0 TypeScript errors.
+- OpenNext & Cloudflare Workers deploy succeeded (Version `e3c17777-9bab-49ba-a3d3-2e027f1005fd`).
+- Remote edge response on `/app/drives` verified clean (HTTP 307 redirecting unauthenticated users to `/login`).
+- Pushed to `origin/main` (commit `3aa3eea`).
+
+
