@@ -515,7 +515,9 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
                     </span>
                   </div>
 
-                  <p className="mt-4 font-body text-base leading-relaxed text-foreground">{currentTurn.question_text}</p>
+                  <div className="mt-4 font-body text-sm sm:text-base leading-relaxed text-foreground whitespace-pre-line font-normal">
+                    {currentTurn.question_text}
+                  </div>
 
                   <div className="mt-6 flex flex-wrap items-center gap-3">
                     {phase === "awaiting_recording" && (
@@ -597,7 +599,9 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
                 <span className="font-body text-xs font-semibold uppercase text-primary">
                   Question {answered.length + 1} ({STAGE_LABELS[currentTurn.stage ?? "intro"]}):
                 </span>
-                <p className="font-body text-sm font-medium text-foreground mt-0.5">{currentTurn.question_text}</p>
+                <div className="font-body text-sm font-medium text-foreground mt-0.5 whitespace-pre-line">
+                  {currentTurn.question_text}
+                </div>
               </div>
               <div className="flex items-center gap-3">
                 {phase === "awaiting_recording" && (
@@ -643,7 +647,9 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
                   </span>
                 </div>
 
-                <p className="mt-4 font-body text-lg leading-body text-foreground">{currentTurn.question_text}</p>
+                <div className="mt-4 font-body text-base sm:text-lg leading-relaxed text-foreground whitespace-pre-line font-normal">
+                  {currentTurn.question_text}
+                </div>
 
                 <div className="mt-6 flex flex-wrap items-center gap-4">
                   {phase === "awaiting_recording" && (
