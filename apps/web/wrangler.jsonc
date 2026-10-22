@@ -34,5 +34,11 @@
 	],
 	"images": {
 		"binding": "IMAGES"
+	},
+	"vars": {
+		"NEXT_PUBLIC_SUPABASE_URL": "https://rhynjyamkeqsdvymmzhc.supabase.co",
+		"NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_PQpQCekeGaEFnTEBmFRP4g__eyTpFr7",
+		"DEMO_REQUEST_NOTIFY_EMAIL": "adithya.kandikonda@sasi.ac.in",
+		"DEMO_REQUEST_FROM_EMAIL": "Vyoman Interviewer <sreeadithya@vyoman.tech>"
 	}
 }
