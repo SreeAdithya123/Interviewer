@@ -8,10 +8,23 @@ import { saveTurnAudio } from "@/lib/interview/audio-store";
 import type { EngineNextTurn } from "@/lib/interview/engine-client";
 import { MAX_ANSWER_SECONDS, MAX_INTERVIEW_SECONDS } from "@/lib/interview/constants";
 import { formatClock, pickSupportedMimeType } from "@/lib/interview/recording";
+import dynamic from "next/dynamic";
 import { DIFFICULTY_LABELS, INTERVIEW_TYPE_LABELS, STAGE_LABELS } from "@/lib/interview/types";
 import type { Interview, InterviewStage } from "@/lib/interview/types";
-import CodingSandbox from "@/components/interview/CodingSandbox";
 import type { SupportedLanguage } from "@/lib/sandbox/types";
+
+const CodingSandbox = dynamic(
+  () => import("@/components/interview/CodingSandbox"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center rounded-3xl border border-zinc-800 bg-zinc-950 font-mono text-sm text-zinc-400 p-8">
+        <span className="mr-2 inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        Loading Live Code Sandbox...
+      </div>
+    ),
+  }
+);
 
 type Phase =
   | "starting"

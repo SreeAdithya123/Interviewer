@@ -63,6 +63,11 @@ export function CodingSandbox({
   const [executionResult, setExecutionResult] = useState<ExecutionResult | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [fontSize, setFontSize] = useState(13);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Sync with parent whenever code changes
   useEffect(() => {
@@ -103,6 +108,15 @@ export function CodingSandbox({
   };
 
   const currentLangConfig = SUPPORTED_LANGUAGES.find((l) => l.id === language);
+
+  if (!mounted) {
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center rounded-3xl border border-zinc-800 bg-zinc-950 p-6 font-mono text-sm text-zinc-400 shadow-xl">
+        <span className="mb-3 inline-block h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        Preparing live coding sandbox...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col rounded-3xl border border-zinc-800 bg-zinc-950 p-3 shadow-xl">

@@ -1,7 +1,16 @@
 "use client";
 
-import React from "react";
-import Editor, { type OnMount } from "@monaco-editor/react";
+import React, { useEffect, useState } from "react";
+import Editor, { loader, type OnMount } from "@monaco-editor/react";
+
+// Configure CDN path so Monaco web workers load reliably from CDN
+if (typeof window !== "undefined") {
+  loader.config({
+    paths: {
+      vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs",
+    },
+  });
+}
 
 interface MonacoEditorProps {
   language: string;
@@ -18,6 +27,12 @@ export function MonacoEditor({
   fontSize = 14,
   readOnly = false,
 }: MonacoEditorProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const handleEditorMount: OnMount = (editor) => {
     // Focus editor on mount if active
     editor.updateOptions({
@@ -28,6 +43,23 @@ export function MonacoEditor({
       smoothScrolling: true,
     });
   };
+
+  if (!mounted) {
+    return (
+      <div className="relative h-full w-full overflow-hidden rounded-2xl border border-zinc-800 bg-[#1e1e1e] p-4 font-mono text-sm text-zinc-400">
+        <div className="flex items-center gap-2 mb-2 text-xs text-zinc-500">
+          <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+          Initializing editor...
+        </div>
+        <textarea
+          readOnly={readOnly}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-[calc(100%-2rem)] w-full resize-none bg-transparent font-mono text-xs text-zinc-300 outline-none"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-full w-full overflow-hidden rounded-2xl border border-zinc-800 bg-[#1e1e1e]">
