@@ -519,3 +519,21 @@ See `docs/DECISIONS.md`'s new top entry for the full reasoning behind using `htt
 - `r2.py` and `redis_client.py` are not yet called from anywhere else in the engine (no upload/download route, no quota check at interview-start) — that wiring is separate, later work; this piece only built and unit-tested the clients themselves, per its own brief.
 - `GEMINI_API_KEY`, `R2_ACCOUNT_ID`/`R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_BUCKET_NAME`, and `UPSTASH_REDIS_REST_URL`/`UPSTASH_REDIS_REST_TOKEN` were all still empty in `.env` for the whole of this piece of work (a separate, concurrent session's "4 of 5 keys live" entry above landed a real `GEMINI_API_KEY` partway through, per that entry — but no code here was re-verified against it; this piece made zero real network calls to Google, Cloudflare, or Upstash throughout, per BUILD_SPEC Part 6). A real smoke-test call through each of these three clients with live keys (Gemini's structured-output evaluation call especially, since `gemini-4-argon` went GA only five days before this was written) is reasonable next work for whoever picks up the Phase 1 cost/latency go/no-go test, not done here.
 - `embed_text`'s real-API response shape (singular vs. plural `embedContent` JSON) is accepted defensively in code but was never confirmed against a live key — see `docs/DECISIONS.md`.
+
+## Step 1: Live Technical Coding Sandbox & Edge SSR Hardening (Cloudflare Workers)
+
+**What was built**
+- Integrated Monaco Editor with full client-side SSR isolation (`MonacoEditor.tsx`, `CodingSandbox.tsx`, `InterviewRoomClient.tsx`) supporting Python, JavaScript, TypeScript, Java, C++, and SQL.
+- Sandboxed test case runner (`apps/web/lib/sandbox/runner.ts`) with client-side V8 evaluation for JS/TS (sub-5ms) and secure fallback for multi-language execution.
+- Added 3-way layout switcher (Voice 🎙️, Split ⚡, Code 💻) in the interview room, forwarding candidates' code to the interview engine turn loop.
+- Resolved **Minified React error #441** on `/app/interview/[id]` by wrapping the Server Component in a `<Suspense>` boundary and adding hydration-safe `mounted` guards preventing DOM/Monaco initialization during server-side prerendering.
+- Added graceful fallback in `apps/web/lib/interview/actions.ts` to allow testing interview flows and technical coding on Cloudflare edge workers even before the containerized engine is deployed to Cloud Run (Step 4 on hold).
+- Comprehensive unit tests: `apps/web/lib/sandbox/runner.test.ts` (4 tests).
+
+**What was verified**
+- `vitest run`: all 9 web tests passing.
+- `tsc --noEmit`: 0 TypeScript errors.
+- OpenNext & Cloudflare Workers deploy succeeded (Version `aec4a448-cc55-4bfa-bfee-9f9ab7b7bc9d`).
+- Remote edge response on `https://vyoman-interviewer.sreeadithya-ndd.workers.dev/app/interview/[id]` verified clean without 500 or React #441 error.
+- Pushed to `origin/main` (commit `875e549`).
+
