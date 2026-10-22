@@ -13,7 +13,13 @@ export async function executeCode(
 ): Promise<ExecutionResult> {
   const startTime = performance.now();
 
-  // Try server-side execution first for all languages
+  // If in browser and language is JS/TS, execute client-side directly for sub-5ms latency
+  // and full browser V8 sandbox support (bypassing edge worker string-eval limits)
+  if (typeof window !== "undefined" && (language === "javascript" || language === "typescript")) {
+    return executeClientJavaScript(code, testCases, startTime);
+  }
+
+  // Try server-side execution for other languages
   try {
     const res = await fetch("/api/sandbox/execute", {
       method: "POST",
@@ -23,7 +29,9 @@ export async function executeCode(
 
     if (res.ok) {
       const data = await res.json();
-      return data as ExecutionResult;
+      if (data && data.success) {
+        return data as ExecutionResult;
+      }
     }
   } catch {
     // If server execution endpoint is unavailable, fall back to client-side evaluation
