@@ -25,8 +25,9 @@ def _now_iso() -> str:
 
 
 class FakeResult:
-    def __init__(self, data: Any) -> None:
+    def __init__(self, data: Any, count: int | None = None) -> None:
         self.data = data
+        self.count = count if count is not None else (len(data) if isinstance(data, list) else 0)
 
 
 class FakeQuery:
@@ -37,11 +38,14 @@ class FakeQuery:
         self._payload: Any = None
         self._on_conflict: str | None = None
         self._filters: list[tuple[str, Any]] = []
+        self._in_filters: list[tuple[str, list[Any]]] = []
+        self._gte_filters: list[tuple[str, Any]] = []
+        self._lte_filters: list[tuple[str, Any]] = []
         self._order_col: str | None = None
 
     # -- builder methods ---------------------------------------------------
 
-    def select(self, *_columns: str) -> FakeQuery:
+    def select(self, *_columns: str, count: str | None = None) -> FakeQuery:
         self._op = "select"
         return self
 
@@ -53,6 +57,22 @@ class FakeQuery:
     def update(self, json: Any) -> FakeQuery:
         self._op = "update"
         self._payload = json
+        return self
+
+    def delete(self) -> FakeQuery:
+        self._op = "delete"
+        return self
+
+    def in_(self, column: str, values: list[Any]) -> FakeQuery:
+        self._in_filters.append((column, values))
+        return self
+
+    def gte(self, column: str, value: Any) -> FakeQuery:
+        self._gte_filters.append((column, value))
+        return self
+
+    def lte(self, column: str, value: Any) -> FakeQuery:
+        self._lte_filters.append((column, value))
         return self
 
     def upsert(self, json: Any, *, on_conflict: str = "") -> FakeQuery:
@@ -100,6 +120,11 @@ class FakeQuery:
                 row.update(self._payload)
             return FakeResult([dict(r) for r in matched])
 
+        if self._op == "delete":
+            matched = [r for r in rows if self._row_matches(r)]
+            self._store.tables[self._table_name] = [r for r in rows if not self._row_matches(r)]
+            return FakeResult([dict(r) for r in matched])
+
         if self._op == "upsert":
             key_col = self._on_conflict
             existing = None
@@ -116,8 +141,24 @@ class FakeQuery:
 
         raise NotImplementedError(f"FakeQuery has no op set (table={self._table_name!r})")
 
+    def _get_field(self, row: dict[str, Any], col: str) -> Any:
+        if col in row:
+            return row[col]
+        parts = col.replace("!inner", "").split(".")
+        val: Any = row
+        for p in parts:
+            if isinstance(val, dict):
+                val = val.get(p)
+            else:
+                return None
+        return val
+
     def _row_matches(self, row: dict[str, Any]) -> bool:
-        return all(row.get(col) == val for col, val in self._filters)
+        eq_match = all(self._get_field(row, col) == val for col, val in self._filters)
+        in_match = all(self._get_field(row, col) in vals for col, vals in self._in_filters)
+        gte_match = all(str(self._get_field(row, col) or "") >= str(val) for col, val in self._gte_filters)
+        lte_match = all(str(self._get_field(row, col) or "") <= str(val) for col, val in self._lte_filters)
+        return eq_match and in_match and gte_match and lte_match
 
 
 class FakeClient:

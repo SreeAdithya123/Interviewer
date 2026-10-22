@@ -40,7 +40,35 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${plusJakartaSans.variable} ${spaceGrotesk.variable}`}
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
     >
+      <head>
+        {/* Suppress unhandled runtime errors thrown by third-party browser extensions
+            (e.g. AI companions, ad blockers, password managers) from bubbling up into
+            Next.js's dev overlay. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window !== 'undefined') {
+                window.addEventListener('error', function(event) {
+                  if (event.filename && event.filename.indexOf('chrome-extension://') !== -1) {
+                    event.stopImmediatePropagation();
+                    event.preventDefault();
+                  }
+                }, true);
+                window.addEventListener('unhandledrejection', function(event) {
+                  var reason = (event.reason && (event.reason.stack || event.reason.toString())) || '';
+                  if (reason.indexOf('chrome-extension://') !== -1) {
+                    event.stopImmediatePropagation();
+                    event.preventDefault();
+                  }
+                }, true);
+              }
+            `,
+          }}
+        />
+      </head>
       {/* suppressHydrationWarning: browser extensions (Grammarly, Twilio, etc.)
           inject attributes like data-gr-ext-installed onto <body> before React
           hydrates, which otherwise logs a false-positive hydration mismatch. */}

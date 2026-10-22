@@ -8,10 +8,12 @@ import { cn } from "@/lib/utils";
 export function AppSidebarNav({
   items,
   className = "mt-8 flex flex-1 flex-col gap-1",
+  onNavigate,
 }: {
   items: NavItem[];
   /** Overridable so the mobile header can lay these out horizontally. */
   className?: string;
+  onNavigate?: () => void;
 }) {
   const pathname = usePathname();
 
@@ -23,6 +25,7 @@ export function AppSidebarNav({
           <Link
             key={item.href}
             href={item.href}
+            onClick={() => onNavigate?.()}
             className={cn(
               "shrink-0 whitespace-nowrap rounded-xl px-3 py-2 font-body text-sm font-medium transition-colors",
               active

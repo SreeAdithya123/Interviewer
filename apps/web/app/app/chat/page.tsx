@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getCurrentProfile } from "@/lib/auth/current-profile";
 import { createClient } from "@/lib/supabase/server";
-import { isStubReply } from "@/lib/ai-stubs/chat-respond";
 import type { ChatMessage, ChatSession } from "@/lib/types/db";
 import { createChatSession, deleteChatSession, sendChatMessage } from "./actions";
+
+function isStubReply(modelId: string | null): boolean {
+  return modelId === "stub-preview-v1";
+}
 
 export const metadata: Metadata = {
   title: "Prep assistant",
@@ -86,8 +89,7 @@ export default async function ChatPage({
         <header className="border-b border-border px-6 py-4">
           <h1 className="font-headline text-lg text-foreground">Prep assistant</h1>
           <p className="font-body text-xs text-muted-foreground">
-            Retrieval over the curated knowledge base, with sources cited — once Phase 1 connects
-            it to a real model.
+            Retrieval over the curated knowledge base, personalized to your weak areas with sources cited.
           </p>
         </header>
 
@@ -127,6 +129,7 @@ export default async function ChatPage({
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
   const isStub = !isUser && isStubReply(message.model_id);
+  const citations = Array.isArray(message.citations) ? message.citations : [];
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
@@ -134,7 +137,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
         className={
           isUser
             ? "max-w-[75%] rounded-2xl bg-primary px-4 py-2.5 font-body text-sm text-primary-foreground"
-            : "max-w-[75%] rounded-2xl bg-muted px-4 py-2.5 font-body text-sm text-foreground"
+            : "max-w-[75%] rounded-2xl bg-muted px-4 py-3 font-body text-sm text-foreground"
         }
       >
         {isStub && (
@@ -142,7 +145,44 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             Preview — not yet connected to the real engine
           </span>
         )}
+        {message.declined && (
+          <span className="mb-2 inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 font-body text-[10px] font-semibold uppercase tracking-label text-amber-600 dark:text-amber-400">
+            Grounded safeguard — out of scope
+          </span>
+        )}
         <p className="whitespace-pre-wrap">{message.content}</p>
+
+        {citations.length > 0 && (
+          <div className="mt-3 border-t border-border/60 pt-2">
+            <span className="font-body text-[11px] font-medium text-muted-foreground uppercase tracking-wider block mb-1">
+              Sources cited:
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {(citations as Array<Record<string, unknown>>).map((c, i) => {
+                const title = typeof c === "object" && c !== null ? String(c.title || `Source ${i + 1}`) : String(c);
+                const url = typeof c === "object" && c !== null && typeof c.source_url === "string" ? c.source_url : null;
+                return url ? (
+                  <a
+                    key={i}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg bg-background/80 px-2 py-0.5 font-body text-xs text-primary hover:underline border border-border"
+                  >
+                    📄 {title} ↗
+                  </a>
+                ) : (
+                  <span
+                    key={i}
+                    className="inline-flex items-center gap-1 rounded-lg bg-background/80 px-2 py-0.5 font-body text-xs text-muted-foreground border border-border"
+                  >
+                    📄 {title}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

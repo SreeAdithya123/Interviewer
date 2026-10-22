@@ -12,3 +12,4 @@ target-version = "py312"
 # provider clients (app/providers/*) are async. Added alongside
 # pytest-asyncio in requirements-dev.txt.
 asyncio_mode = "auto"
+pythonpath = ["."]

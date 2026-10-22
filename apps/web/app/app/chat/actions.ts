@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth/current-profile";
 import { createClient } from "@/lib/supabase/server";
-import { chatRespondStub } from "@/lib/ai-stubs/chat-respond";
+import { engineSendChatMessage } from "@/lib/chat/engine-client";
 
 // Re-checked here too (see app/app/colleges/actions.ts's header comment)
 // — every Server Action re-verifies the caller is signed in, even though
@@ -36,7 +36,7 @@ export async function createChatSession() {
 }
 
 export async function sendChatMessage(formData: FormData) {
-  await requireSignedIn();
+  const profile = await requireSignedIn();
   const supabase = await createClient();
 
   const sessionId = String(formData.get("session_id") ?? "");
@@ -50,20 +50,12 @@ export async function sendChatMessage(formData: FormData) {
   });
   if (userMessageError) throw new Error(userMessageError.message);
 
-  // TODO(phase-1): replace chatRespondStub with a real engine call once
-  // GEMINI_API_KEY and the embedded knowledge base exist — see
-  // lib/ai-stubs/chat-respond.ts.
-  const reply = await chatRespondStub(content);
-
-  const { error: replyError } = await supabase.from("chat_messages").insert({
-    session_id: sessionId,
-    role: "assistant",
-    content: reply.content,
-    citations: reply.citations,
-    declined: reply.declined,
-    model_id: reply.modelId,
+  await engineSendChatMessage({
+    sessionId,
+    userId: profile.id,
+    message: content,
+    collegeId: profile.college_id,
   });
-  if (replyError) throw new Error(replyError.message);
 
   // Nice-to-have: title a brand-new chat from its first message instead of
   // leaving every session called "New chat" in the sidebar.

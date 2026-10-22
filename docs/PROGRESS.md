@@ -1,5 +1,67 @@
 # Progress
 
+## Phase 7: Quality harness, hardening, deploy workflows, and Razorpay — PASS
+
+- **Golden Set Evaluation Harness (`eval/golden_set_eval.py`)**:
+  - Compares AI evaluation scores (0-100) against human rater scores (1-5 scaled to 0-100) across all 5 rubric dimensions (`communication_clarity`, `answer_structure`, `technical_depth`, `relevance`, `confidence_and_delivery`).
+  - Evaluated on benchmark golden set: **100.0% agreement within 1 rubric point (20 pts)**, Mean Absolute Error of 16.05 pts across all evaluated dimensions. Target >= 70.0% achieved.
+- **Upstash Redis Rate Limiting**:
+  - Implemented `check_rate_limit` in `app/providers/redis_client.py` and integrated into FastAPI endpoints:
+    - `/interviews`: max 10 creations per 10-minute window per user.
+    - `/resume/scan`: max 15 scans per minute per user.
+    - `/chat/respond`: max 25 messages per minute per user.
+  - Returns HTTP 429 when thresholds are exceeded; fails open if Redis is unconfigured in development.
+- **Load Testing Script (`eval/load_test_k6.js`)**:
+  - k6 load test simulating up to 100 concurrent students performing full interview lifecycles (health, create, next turn, answer audio submit, finish, report polling).
+  - Enforces SLAs: p50 per-turn latency < 2500ms, p95 < 4000ms, error rate < 1%.
+- **Deployment Workflows (`.github/workflows/deploy.yml`)**:
+  - Automated GitHub Actions workflow building and deploying:
+    - Python engine container to Google Cloud Run (`asia-south1`).
+    - Next.js web application to Cloudflare Pages / OpenNext.
+- **Razorpay Payments & Quota Provisioning**:
+  - `apps/web/lib/billing/razorpay.ts`: order creation, HMAC-SHA256 signature verification, quota provisioning upon capture.
+  - Webhook route `apps/web/app/api/webhooks/razorpay/route.ts` handling `payment.captured` and `order.paid`.
+  - Server actions `createCheckoutOrder` & `simulatePaymentCapture` in `apps/web/app/app/billing/actions.ts`.
+  - Frontend billing and passes manager (`apps/web/app/app/billing/page.tsx` & `BillingClient.tsx`) with quota visualization, plan selection, and purchase history.
+  - Seeded standard plans (`Student Practice Pass - Monthly` and `College Batch Institutional - Yearly`) in live `plans` table.
+
+## Phase 5: College admin & platform admin acceptance checks — PASS
+
+- Scripted in `eval/test_admin_acceptance.py`:
+  - **CSV Invite Validation**: Tested with 7 rows containing deliberate errors (missing email, invalid email format, duplicate email within file, unknown role, unknown batch). Verified line-numbered row-level errors and clean passing of valid rows.
+  - **Direct SQL Aggregate Verification**: Verified total spend in `usage_events` (INR 37.85 across 418 events, 7 features) matches dashboard aggregations exactly.
+  - **Cost Rollup Verification**: Verified all completed interviews have `total_cost_paise` exactly matching the sum of their corresponding `usage_events` rows.
+  - **Readiness Distribution Verification**: Verified College Admin readiness band grouping against direct SQL query on student profiles and completed reports.
+  - Result: 100% acceptance pass.
+
+## Phase 4: Interview product completion — PASS
+
+- **Quota Enforcement at Interview Start**:
+  - In `services/engine/app/interview/engine.py` `create_interview`, user and college quotas are checked for active period (`period_start <= today <= period_end`, `feature='interview'`).
+  - Raises `QuotaExhaustedError` (mapped to HTTP 403 in `app/main.py`) with a clear message when quota is exhausted. Automatically increments quota on creation.
+- **Persistent Answer Audio to R2**:
+  - Added `POST /interviews/{id}/turns/{turn_id}/upload-url` returning signed R2 upload URL for browser direct uploads.
+  - `submit_answer` supports `audio_key` (downloads from R2 for STT) or direct `audio_bytes` (saves to R2 at `answers/{interview_id}/{turn_id}.webm`), recording `interview_turns.answer_audio_key`.
+  - `get_interview_turns` and report page fetch signed R2 download URLs (`answer_audio_url`) for permanent playback across page reloads.
+- **Report Queue, Retries & Stuck Worker Recovery**:
+  - `services/engine/app/reports/worker.py`: handles evaluation with up to 3 retries and exponential backoff for transient LLM errors.
+  - `recover_stuck_reports`: recovers reports in `pending` status older than 2 minutes.
+  - `verify_evidence_quotes`: automated check validating that score quotes exist verbatim in transcript answers.
+  - `finish_interview` accepts delivery metrics (`eye_contact_pct`, `posture_stability_pct`) and writes them to `interviews` and `interview_reports`.
+  - Web client auto-refreshes report while evaluation is pending.
+- **Tests**: Added 6 tests in `services/engine/tests/interview/test_phase4_features.py` covering user/college quota exhaustion, quota incrementing, verbatim evidence quote verification, delivery metrics recording, and stuck report recovery. Full engine test suite now **110 passed**.
+
+## Phase 6: Prep assistant & curated knowledge base RAG — PASS
+
+- **Built**:
+  - `services/engine/prompts/chat_prep_v1.txt`: grounding, source citations, student weak-area personalization, and polite refusal on out-of-scope queries.
+  - `services/engine/app/chat/engine.py`: paragraph-aware chunking (`chunk_text`), vector similarity search (`cosine_similarity`), embedding via `gemini.embed_text` with `feature='embedding'` cost logging, and response generation with weak-area integration. Politeness threshold calibrated at `0.72`. Monthly quota cap enforced.
+  - FastAPI endpoints: `POST /kb/documents/{id}/embed` and `POST /chat/respond`.
+  - Next.js web client: `apps/web/lib/chat/engine-client.ts`, rewired `actions.ts` in chat and knowledge-base, removed legacy stubs.
+  - Seeded 10 comprehensive placement documents into Supabase `kb_documents` and embedded into 25 vector rows in `kb_chunks`.
+- **Verified**:
+  - `eval/prep_assistant_eval.py` executed against 20-question test set (`eval/prep_assistant_test_set.json`): **20/20 passed (100.0%)** — 10 covered questions cited verified sources, 10 uncovered questions cleanly declined without hallucinating.
+
 ## Phase 3 (finished): real resume scanner, end to end
 
 **Built**: `prompts/resume_scan_v1.txt` (4-dimension contract matching `apps/web/lib/ai-stubs/scan-resume.ts`'s shape exactly: `parse_health`/`jd_match`/`bullet_quality`/`formatting_risks`, explicit "never a single ATS score" and "never invent a number in a bullet suggestion" rules) + `gemini.scan_resume` (new `ScanResult` dataclass; accepts exactly one of a structured `resume_data` dict or `pdf_base64`) + `_post_generate_content`'s new `pdf_base64` param (sends a classic `contents.parts[].inlineData.{mimeType:"application/pdf",data}` part ahead of the text prompt — confirmed live against a hand-built minimal PDF, since current Gemini docs steer new document-processing examples toward a different "Interactions API" this codebase doesn't otherwise use). `_assert_no_invented_digits` (the bullet-rewrite anti-hallucination check) was generalized to take `(original, candidate, context)` instead of being bullet-rewrite-specific, and reused for a new `_assert_scan_bullet_suggestions_have_no_invented_digits` that checks each `bullet_quality.bullets[].suggestion` against that one bullet's own `text` only (never the whole resume). `app/resume/engine.py`'s new `scan_resume()` wrapper writes the real `resume_scans` row itself via the service-role client and cost-logs under `feature='resume_scan'` with `resume_scan_id` set — replacing the temporary `create_stub_resume_scan` RPC bridge, dropped in a new migration (`20261019120000_drop_resume_scan_stub_bridge.sql`) exactly as that bridge's own header comment said to once a real engine-side writer existed. New `POST /resume/scan` route in `main.py`.

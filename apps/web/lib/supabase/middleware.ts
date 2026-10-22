@@ -11,6 +11,14 @@ const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
 
+  // Fast path: if no Supabase auth cookie exists in the request, skip the
+  // 300-500ms network round-trip to the remote auth server entirely.
+  const allCookies = request.cookies.getAll();
+  const hasAuthCookie = allCookies.some((cookie) => cookie.name.startsWith("sb-"));
+  if (!hasAuthCookie) {
+    return supabaseResponse;
+  }
+
   const supabase = createServerClient(supabaseUrl, supabasePublishableKey, {
     cookies: {
       getAll() {

@@ -107,6 +107,38 @@ export async function engineSubmitAnswer(
   });
 }
 
-export async function engineFinishInterview(interviewId: string): Promise<void> {
-  await engineFetch(`/interviews/${interviewId}/finish`, { method: "POST" });
+export interface DeliveryAggregates {
+  eyeContactPct?: number | null;
+  postureStabilityPct?: number | null;
+}
+
+export async function engineGetTurnUploadUrl(
+  interviewId: string,
+  turnId: string,
+): Promise<{ upload_url: string; audio_key: string }> {
+  return engineFetch(`/interviews/${interviewId}/turns/${turnId}/upload-url`, { method: "POST" });
+}
+
+export async function engineGetInterviewTurns(interviewId: string): Promise<Record<string, unknown>[]> {
+  return engineFetch(`/interviews/${interviewId}/turns`, { method: "GET" });
+}
+
+export async function engineFinishInterview(
+  interviewId: string,
+  aggregates?: DeliveryAggregates,
+): Promise<void> {
+  await engineFetch(`/interviews/${interviewId}/finish`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      eye_contact_pct: aggregates?.eyeContactPct ?? null,
+      posture_stability_pct: aggregates?.postureStabilityPct ?? null,
+    }),
+  });
+}
+
+export async function engineRetryReport(interviewId: string): Promise<void> {
+  await engineFetch(`/interviews/${interviewId}/report/retry`, {
+    method: "POST",
+  });
 }

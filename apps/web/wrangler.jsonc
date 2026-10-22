@@ -1,0 +1,38 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "vyoman-interviewer",
+	"compatibility_date": "2026-10-19",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding, the service name must match the worker name
+			// see https://opennext.js.org/cloudflare/caching
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "vyoman-interviewer"
+		}
+	],
+	"r2_buckets": [
+		// Used for Next.js' incremental (ISR/data) cache -- separate from this
+		// app's own Cloudflare R2 bucket for resume files (see services/engine's
+		// R2_BUCKET_NAME). Create this bucket before deploying (see deploy steps).
+		{
+			"binding": "NEXT_INC_CACHE_R2_BUCKET",
+			"bucket_name": "vyoman-interviewer-opennext-cache"
+		},
+		{
+			"bucket_name": "vyoman-interviewer-opennext-cache",
+			"binding": "vyoman_interviewer_opennext_cache"
+		}
+	],
+	"images": {
+		"binding": "IMAGES"
+	}
+}

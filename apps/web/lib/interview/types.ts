@@ -52,6 +52,8 @@ export interface InterviewTurn {
   follow_up_of_turn_id: string | null;
   question_audio_key: string | null;
   answer_audio_key: string | null;
+  question_audio_url?: string | null;
+  answer_audio_url?: string | null;
   answer_duration_seconds: number | null;
   transcript: string | null;
   stt_provider: "groq" | "sarvam" | null;

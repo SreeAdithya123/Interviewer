@@ -29,6 +29,7 @@ from app.providers.gemini import (
     GeminiError,
     embed_text,
     evaluate_interview,
+    generate_chat_reply,
     generate_followup,
     rewrite_resume_bullet,
     scan_resume,
@@ -496,3 +497,52 @@ async def test_scan_resume_raises_on_response_missing_a_required_field() -> None
 
     with pytest.raises(GeminiError, match="missing 'formatting_risks'"):
         await scan_resume(resume_data={"basics": {}}, pdf_base64=None, job_description_text=None)
+
+
+@respx.mock
+async def test_generate_chat_reply_returns_grounded_content_and_citations() -> None:
+    respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response(
+            {
+                "content": "Amazon evaluates Leadership Principles in every round.",
+                "citations": [
+                    {"document_id": "doc-123", "title": "Amazon SDE Hiring", "source_url": "https://example.com"}
+                ],
+            },
+            prompt_tokens=150,
+            candidates_tokens=35,
+        )
+    )
+
+    result = await generate_chat_reply(
+        question="How does Amazon evaluate candidates?",
+        context_chunks=[
+            {
+                "document_id": "doc-123",
+                "document_title": "Amazon SDE Hiring",
+                "document_category": "company_pattern",
+                "source_url": "https://example.com",
+                "content": "Amazon evaluates Leadership Principles in every round.",
+            }
+        ],
+        weak_areas=[{"skill": "Behavioral", "severity": "moderate", "notes": "Work on STAR method"}],
+    )
+
+    assert result.content == "Amazon evaluates Leadership Principles in every round."
+    assert len(result.citations) == 1
+    assert result.citations[0]["document_id"] == "doc-123"
+    assert result.input_tokens == 150
+    assert result.output_tokens == 35
+
+
+@respx.mock
+async def test_generate_chat_reply_raises_on_missing_content() -> None:
+    respx.post(_FOLLOWUP_URL).mock(
+        return_value=_generate_content_response({"invalid_key": "data"})
+    )
+
+    with pytest.raises(GeminiError, match="missing a valid 'content' string"):
+        await generate_chat_reply(
+            question="Tell me about Google",
+            context_chunks=[],
+        )

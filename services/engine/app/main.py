@@ -14,13 +14,17 @@ interview/turn is in a sane state for the requested action (translated into
 from __future__ import annotations
 
 from dataclasses import asdict
+from typing import Any
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
+from app.chat import engine as chat_engine
 from app.internal.manual_test_harness import router as internal_test_interview_router
 from app.interview import engine
+from app.providers import r2
 from app.providers.gemini import GeminiError
+from app.providers.redis_client import check_rate_limit
 from app.resume import engine as resume_engine
 
 app = FastAPI(title="Vyoman Interviewer Engine")
@@ -86,8 +90,18 @@ class SubmitAnswerResponse(BaseModel):
     next_turn: NextTurnResponse
 
 
+class FinishInterviewRequest(BaseModel):
+    eye_contact_pct: float | None = None
+    posture_stability_pct: float | None = None
+
+
 class FinishInterviewResponse(BaseModel):
     status: str = "completed"
+
+
+class UploadUrlResponse(BaseModel):
+    upload_url: str
+    audio_key: str
 
 
 def _as_next_turn_response(result: engine.NextTurnResult) -> NextTurnResponse:
@@ -96,6 +110,8 @@ def _as_next_turn_response(result: engine.NextTurnResult) -> NextTurnResponse:
 
 def _raise_for_engine_error(exc: engine.InterviewEngineError) -> None:
     """Translate an engine state error into the matching HTTP status."""
+    if isinstance(exc, engine.QuotaExhaustedError):
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     if isinstance(exc, (engine.InterviewNotFoundError, engine.TurnNotFoundError)):
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     if isinstance(exc, (engine.AnswerTooLongError, engine.NoActiveTemplateError)):
@@ -107,6 +123,12 @@ def _raise_for_engine_error(exc: engine.InterviewEngineError) -> None:
 
 @app.post("/interviews", response_model=CreateInterviewResponse)
 async def post_create_interview(body: CreateInterviewRequest) -> CreateInterviewResponse:
+    allowed = await check_rate_limit(f"ratelimit:create_interview:{body.user_id}", limit=10, window_seconds=600)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please wait a few minutes before starting another interview.",
+        )
     try:
         result = await engine.create_interview(
             user_id=body.user_id,
@@ -143,19 +165,49 @@ async def post_next_turn(interview_id: str) -> NextTurnResponse:
 
 
 @app.post(
+    "/interviews/{interview_id}/turns/{turn_id}/upload-url",
+    response_model=UploadUrlResponse,
+)
+async def post_turn_upload_url(interview_id: str, turn_id: str) -> UploadUrlResponse:
+    audio_key = f"answers/{interview_id}/{turn_id}.webm"
+    try:
+        upload_url = r2.generate_upload_url(audio_key)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to generate upload URL: {exc}") from exc
+    return UploadUrlResponse(upload_url=upload_url, audio_key=audio_key)
+
+
+@app.get("/interviews/{interview_id}/turns")
+async def get_interview_turns(interview_id: str) -> list[dict[str, Any]]:
+    try:
+        return await engine.get_interview_turns(interview_id)
+    except engine.InterviewEngineError as exc:
+        _raise_for_engine_error(exc)
+        raise
+
+
+@app.post(
     "/interviews/{interview_id}/turns/{turn_id}/answer",
     response_model=SubmitAnswerResponse,
 )
 async def post_submit_answer(
     interview_id: str,
     turn_id: str,
-    audio: UploadFile,
+    audio: UploadFile | None = File(None),  # noqa: B008
+    audio_key: str | None = Form(None),
     answer_duration_seconds: float = Form(...),
 ) -> SubmitAnswerResponse:
-    audio_bytes = await audio.read()
+    audio_bytes = await audio.read() if audio is not None else None
+    if not audio_bytes and not audio_key:
+        raise HTTPException(status_code=422, detail="Either audio file or audio_key must be provided")
+
     try:
         result = await engine.submit_answer(
-            interview_id, turn_id, audio_bytes, answer_duration_seconds
+            interview_id,
+            turn_id,
+            audio_bytes=audio_bytes,
+            answer_duration_seconds=answer_duration_seconds,
+            audio_key=audio_key,
         )
     except engine.InterviewEngineError as exc:
         _raise_for_engine_error(exc)
@@ -170,12 +222,33 @@ async def post_submit_answer(
 
 
 @app.post("/interviews/{interview_id}/finish", response_model=FinishInterviewResponse)
-async def post_finish_interview(interview_id: str) -> FinishInterviewResponse:
+async def post_finish_interview(
+    interview_id: str,
+    body: FinishInterviewRequest | None = None,
+) -> FinishInterviewResponse:
+    eye_contact = body.eye_contact_pct if body else None
+    posture = body.posture_stability_pct if body else None
     try:
-        await engine.finish_interview(interview_id)
+        await engine.finish_interview(
+            interview_id,
+            eye_contact_pct=eye_contact,
+            posture_stability_pct=posture,
+        )
     except engine.InterviewEngineError as exc:
         _raise_for_engine_error(exc)
         raise  # unreachable: _raise_for_engine_error always raises
+    return FinishInterviewResponse()
+
+
+@app.post("/interviews/{interview_id}/report/retry", response_model=FinishInterviewResponse)
+async def post_retry_report(interview_id: str) -> FinishInterviewResponse:
+    from app.db import get_client
+    from app.reports.worker import evaluate_and_save_report
+
+    client = await get_client()
+    ok = await evaluate_and_save_report(interview_id, client=client)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Failed to evaluate interview report after retries")
     return FinishInterviewResponse()
 
 
@@ -233,6 +306,12 @@ async def post_scan_resume(body: ScanResumeRequest) -> ScanResumeResponse:
     """BUILD_SPEC Part 4.4. Exactly one of `resume_data`/`pdf_base64` must
     be given — `resume_engine.scan_resume` raises `ValueError` otherwise,
     translated to 422 here rather than letting FastAPI 500 on it."""
+    allowed = await check_rate_limit(f"ratelimit:scan_resume:{body.user_id}", limit=15, window_seconds=60)
+    if not allowed:
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded for resume scanning. Please wait a moment.",
+        )
     try:
         result = await resume_engine.scan_resume(
             user_id=body.user_id,
@@ -254,4 +333,80 @@ async def post_scan_resume(body: ScanResumeRequest) -> ScanResumeResponse:
         jd_match=result.jd_match,
         bullet_quality=result.bullet_quality,
         formatting_risks=result.formatting_risks,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Knowledge Base & Prep Assistant (BUILD_SPEC Part 4.6 / Part 4.8)
+# ---------------------------------------------------------------------------
+
+
+class EmbedDocumentRequest(BaseModel):
+    reviewer_id: str | None = None
+
+
+class EmbedDocumentResponse(BaseModel):
+    ok: bool
+    document_id: str
+    chunks_created: int
+
+
+@app.post("/kb/documents/{document_id}/embed", response_model=EmbedDocumentResponse)
+async def post_embed_document(
+    document_id: str,
+    body: EmbedDocumentRequest | None = None,
+) -> EmbedDocumentResponse:
+    reviewer_id = body.reviewer_id if body else None
+    try:
+        result = await chat_engine.embed_and_save_document(
+            document_id=document_id,
+            reviewer_id=reviewer_id,
+        )
+    except chat_engine.DocumentNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return EmbedDocumentResponse(
+        ok=result["ok"],
+        document_id=result["document_id"],
+        chunks_created=result["chunks_created"],
+    )
+
+
+class ChatRespondRequest(BaseModel):
+    session_id: str
+    user_id: str
+    message: str
+    college_id: str | None = None
+
+
+class ChatRespondResponse(BaseModel):
+    content: str
+    citations: list[dict]
+    declined: bool
+    model_id: str
+
+
+@app.post("/chat/respond", response_model=ChatRespondResponse)
+async def post_chat_respond(body: ChatRespondRequest) -> ChatRespondResponse:
+    if not body.message.strip():
+        raise HTTPException(status_code=422, detail="message must not be empty")
+    try:
+        result = await chat_engine.respond_to_chat(
+            session_id=body.session_id,
+            user_id=body.user_id,
+            message=body.message,
+            college_id=body.college_id,
+        )
+    except chat_engine.ChatQuotaExhaustedError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except chat_engine.RateLimitExceededError as exc:
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
+    except GeminiError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return ChatRespondResponse(
+        content=result["content"],
+        citations=result["citations"],
+        declined=result["declined"],
+        model_id=result["model_id"],
     )

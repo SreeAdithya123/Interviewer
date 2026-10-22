@@ -24,13 +24,16 @@ import {
   EngineError,
   engineCreateInterview,
   engineFinishInterview,
+  engineGetInterviewTurns,
   engineGetNextTurn,
+  engineRetryReport,
   engineSubmitAnswer,
+  type DeliveryAggregates,
   type EngineNextTurn,
   type EngineSubmitAnswerResult,
 } from "@/lib/interview/engine-client";
 import { createClient } from "@/lib/supabase/server";
-import type { Difficulty, Interview, InterviewType } from "@/lib/interview/types";
+import type { Difficulty, Interview, InterviewTurn, InterviewType } from "@/lib/interview/types";
 
 async function requireSignedInProfile() {
   const profile = await getCurrentProfile();
@@ -117,7 +120,21 @@ export async function submitAnswer(formData: FormData): Promise<EngineSubmitAnsw
   return engineSubmitAnswer(interviewId, turnId, audio, answerDurationSeconds);
 }
 
-export async function finishInterview(interviewId: string): Promise<void> {
+export async function finishInterview(
+  interviewId: string,
+  aggregates?: DeliveryAggregates,
+): Promise<void> {
   await requireSignedInProfile();
-  await engineFinishInterview(interviewId);
+  await engineFinishInterview(interviewId, aggregates);
+}
+
+export async function getInterviewTurns(interviewId: string): Promise<InterviewTurn[]> {
+  await requireSignedInProfile();
+  const turns = await engineGetInterviewTurns(interviewId);
+  return turns as unknown as InterviewTurn[];
+}
+
+export async function retryInterviewReport(interviewId: string): Promise<void> {
+  await requireSignedInProfile();
+  await engineRetryReport(interviewId);
 }

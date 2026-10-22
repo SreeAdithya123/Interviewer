@@ -167,9 +167,30 @@ export function ScannerClient({ resumes }: { resumes: ResumeRow[] }) {
           disabled={!canScan || status === "scanning"}
           className="btn-primary mt-5 flex items-center gap-2 text-sm disabled:opacity-60"
         >
-          <ScanLine className="h-4 w-4" strokeWidth={1.75} />
-          {status === "scanning" ? "Scanning..." : "Scan resume"}
+          {status === "scanning" ? (
+            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : (
+            <ScanLine className="h-4 w-4" strokeWidth={1.75} />
+          )}
+          {status === "scanning" ? "Analyzing resume..." : "Scan resume"}
         </button>
+
+        {status === "scanning" && (
+          <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4 animate-pulse">
+            <div className="flex items-center gap-3">
+              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <div className="flex-1">
+                <p className="font-body text-sm font-medium text-foreground">
+                  Analyzing document with Gemini AI...
+                </p>
+                <p className="font-body text-xs text-muted-foreground">
+                  Extracting sections, validating bullet point metrics, and evaluating formatting risks.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {status === "error" && error && <p className="mt-3 font-body text-sm text-destructive">{error}</p>}
       </div>
 

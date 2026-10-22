@@ -30,6 +30,7 @@ cleanly with ``GeminiError`` wrapping Google's 401/403, not a crash.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from dataclasses import dataclass, field
@@ -72,12 +73,14 @@ FOLLOWUP_PROMPT_VERSION = "interview_followup_v1"
 EVALUATION_PROMPT_VERSION = "interview_evaluation_v1"
 BULLET_REWRITE_PROMPT_VERSION = "resume_bullet_rewrite_v1"
 SCAN_PROMPT_VERSION = "resume_scan_v1"
+CHAT_PROMPT_VERSION = "chat_prep_v1"
 _FOLLOWUP_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{FOLLOWUP_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 _EVALUATION_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{EVALUATION_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 _BULLET_REWRITE_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{BULLET_REWRITE_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 _SCAN_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{SCAN_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
+_CHAT_PROMPT_TEMPLATE = (_PROMPTS_DIR / f"{CHAT_PROMPT_VERSION}.txt").read_text(encoding="utf-8")
 
-_DEFAULT_TIMEOUT_SECONDS = 30.0
+_DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
 class GeminiError(ProviderError):
@@ -173,6 +176,20 @@ class ScanResult:
     raw_response: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class ChatReplyResult:
+    """Result of one prep-assistant chat turn (BUILD_SPEC Part 4.6) — grounded
+    markdown content plus cited sources, backed by the conversation model."""
+
+    content: str
+    citations: list[dict[str, Any]]
+    model_id: str
+    input_tokens: int
+    output_tokens: int
+    thoughts_tokens: int = 0
+    raw_response: dict[str, Any] = field(default_factory=dict)
+
+
 def _auth_headers(api_key: str) -> dict[str, str]:
     return {"x-goog-api-key": api_key, "Content-Type": "application/json"}
 
@@ -206,11 +223,24 @@ async def _post_generate_content(
         "contents": [{"role": "user", "parts": parts}],
         "generationConfig": {"responseMimeType": "application/json"},
     }
-    try:
-        async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT_SECONDS) as client:
-            response = await client.post(url, headers=_auth_headers(api_key), json=body)
-    except httpx.HTTPError as exc:
-        raise GeminiError(f"Gemini generateContent request failed: {exc}") from exc
+    max_retries = 3
+    for attempt in range(max_retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=_DEFAULT_TIMEOUT_SECONDS) as client:
+                response = await client.post(url, headers=_auth_headers(api_key), json=body)
+                if response.status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
+                    backoff = (2 ** attempt) * 1.0 + 0.5
+                    await asyncio.sleep(backoff)
+                    continue
+                break
+        except httpx.TimeoutException as exc:
+            if attempt == max_retries:
+                raise GeminiError(f"Gemini generateContent timed out after {max_retries + 1} attempts: {exc}") from exc
+            await asyncio.sleep(1.0 * (attempt + 1))
+        except httpx.HTTPError as exc:
+            if attempt == max_retries:
+                raise GeminiError(f"Gemini generateContent request failed: {exc}") from exc
+            await asyncio.sleep(1.0 * (attempt + 1))
 
     if response.status_code != 200:
         raise GeminiError(
@@ -534,33 +564,116 @@ async def evaluate_interview(
         eye_contact_pct="null" if eye_contact_pct is None else eye_contact_pct,
         posture_stability_pct="null" if posture_stability_pct is None else posture_stability_pct,
     )
+    models_to_try = [GEMINI_EVALUATION_MODEL_ID]
+    if GEMINI_CONVERSATION_MODEL_ID not in models_to_try:
+        models_to_try.append(GEMINI_CONVERSATION_MODEL_ID)
+
+    last_exc: Exception | None = None
+    for target_model in models_to_try:
+        try:
+            payload = await _post_generate_content(
+                api_base=_EVALUATION["api_base"],
+                path_template=_EVALUATION["endpoint"],
+                model_id=target_model,
+                prompt=prompt,
+            )
+            parsed = _parse_json_object(_extract_candidate_text(payload))
+
+            scores = dict(parsed["scores"])
+            overall_score = float(parsed["overall_score"])
+            strengths = list(parsed["strengths"])
+            weak_areas = list(parsed["weak_areas"])
+            practice_actions = list(parsed["practice_actions"])
+
+            input_tokens, output_tokens, thoughts_tokens = _usage_tokens(payload)
+            return EvaluationResult(
+                scores=scores,
+                overall_score=overall_score,
+                strengths=strengths,
+                weak_areas=weak_areas,
+                practice_actions=practice_actions,
+                model_id=target_model,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                thoughts_tokens=thoughts_tokens,
+                raw_response=payload,
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise GeminiError(
+                f"Gemini evaluation response is missing/malformed a required field: {parsed!r}"
+            ) from exc
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if target_model != models_to_try[-1]:
+                continue
+            raise last_exc
+
+
+async def generate_chat_reply(
+    *,
+    question: str,
+    context_chunks: list[dict[str, Any]],
+    weak_areas: list[dict[str, Any]] | None = None,
+) -> ChatReplyResult:
+    """Ask the conversation model (Gemini 3.5 Flash-Lite) to answer the student's
+    question based strictly on the retrieved knowledge base chunks and student's
+    weak areas (BUILD_SPEC Part 4.6).
+    """
+    context_parts: list[str] = []
+    for idx, chunk in enumerate(context_chunks, 1):
+        doc_id = chunk.get("document_id", "")
+        title = chunk.get("document_title", "Untitled Document")
+        category = chunk.get("document_category", "general")
+        url = chunk.get("source_url") or "None"
+        text = chunk.get("content", "")
+        context_parts.append(
+            f"[{idx}] Document: {title}\n"
+            f"ID: {doc_id} | Category: {category} | URL: {url}\n"
+            f"Excerpt:\n{text}\n"
+        )
+    context_str = "\n".join(context_parts) if context_parts else "No context."
+
+    if weak_areas:
+        weak_parts = [
+            f"- {w.get('skill', 'General')} (severity: {w.get('severity', 'moderate')}): {w.get('notes', '')}"
+            for w in weak_areas
+        ]
+        weak_str = "\n".join(weak_parts)
+    else:
+        weak_str = "None recorded for this student."
+
+    prompt = _CHAT_PROMPT_TEMPLATE.format(
+        context=context_str,
+        weak_areas=weak_str,
+        question=question,
+    )
+
     payload = await _post_generate_content(
-        api_base=_EVALUATION["api_base"],
-        path_template=_EVALUATION["endpoint"],
-        model_id=GEMINI_EVALUATION_MODEL_ID,
+        api_base=_CONVERSATION["api_base"],
+        path_template=_CONVERSATION["endpoint"],
+        model_id=GEMINI_CONVERSATION_MODEL_ID,
         prompt=prompt,
     )
     parsed = _parse_json_object(_extract_candidate_text(payload))
 
-    try:
-        scores = dict(parsed["scores"])
-        overall_score = float(parsed["overall_score"])
-        strengths = list(parsed["strengths"])
-        weak_areas = list(parsed["weak_areas"])
-        practice_actions = list(parsed["practice_actions"])
-    except (KeyError, TypeError, ValueError) as exc:
+    content = parsed.get("content")
+    if not isinstance(content, str):
         raise GeminiError(
-            f"Gemini evaluation response is missing/malformed a required field: {parsed!r}"
-        ) from exc
+            f"Gemini chat response is missing a valid 'content' string: {parsed!r}"
+        )
+
+    raw_citations = parsed.get("citations")
+    citations: list[dict[str, Any]] = []
+    if isinstance(raw_citations, list):
+        for c in raw_citations:
+            if isinstance(c, dict):
+                citations.append(c)
 
     input_tokens, output_tokens, thoughts_tokens = _usage_tokens(payload)
-    return EvaluationResult(
-        scores=scores,
-        overall_score=overall_score,
-        strengths=strengths,
-        weak_areas=weak_areas,
-        practice_actions=practice_actions,
-        model_id=GEMINI_EVALUATION_MODEL_ID,
+    return ChatReplyResult(
+        content=content,
+        citations=citations,
+        model_id=GEMINI_CONVERSATION_MODEL_ID,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         thoughts_tokens=thoughts_tokens,

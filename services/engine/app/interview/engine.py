@@ -89,6 +89,10 @@ class AnswerTooLongError(InterviewEngineError):
     docs/DECISIONS.md."""
 
 
+class QuotaExhaustedError(InterviewEngineError):
+    """The user or their college has exhausted their interview quota for the current billing period."""
+
+
 @dataclass(frozen=True)
 class NextTurnResult:
     """What the caller should do next. `interview_finished=True` means the
@@ -180,6 +184,55 @@ async def create_interview(
     matches within it.
     """
     client = await get_client()
+
+    # Resolve college_id from student profile if not explicitly supplied
+    if not college_id:
+        try:
+            prof_res = await client.table("profiles").select("college_id").eq("id", user_id).execute()
+            if prof_res.data and prof_res.data[0].get("college_id"):
+                college_id = prof_res.data[0]["college_id"]
+        except Exception:  # noqa: BLE001, S110
+            pass
+
+    today_str = datetime.now(UTC).date().isoformat()
+
+    # Enforce user interview quota
+    user_quota_res = (
+        await client.table("quotas")
+        .select("id, used_units, limit_units")
+        .eq("scope", "user")
+        .eq("user_id", user_id)
+        .eq("feature", "interview")
+        .lte("period_start", today_str)
+        .gte("period_end", today_str)
+        .execute()
+    )
+    for q in user_quota_res.data or []:
+        if q["used_units"] >= q["limit_units"]:
+            raise QuotaExhaustedError(
+                f"You have reached your interview limit ({q['used_units']}/{q['limit_units']}) for this period."
+            )
+
+    # Enforce college interview quota
+    college_quota_rows: list[dict[str, Any]] = []
+    if college_id:
+        college_quota_res = (
+            await client.table("quotas")
+            .select("id, used_units, limit_units")
+            .eq("scope", "college")
+            .eq("college_id", college_id)
+            .eq("feature", "interview")
+            .lte("period_start", today_str)
+            .gte("period_end", today_str)
+            .execute()
+        )
+        college_quota_rows = college_quota_res.data or []
+        for q in college_quota_rows:
+            if q["used_units"] >= q["limit_units"]:
+                raise QuotaExhaustedError(
+                    f"College interview quota reached ({q['used_units']}/{q['limit_units']}) for this period."
+                )
+
     template_res = (
         await client.table("interview_templates")
         .select("id")
@@ -205,6 +258,24 @@ async def create_interview(
     }
     res = await client.table("interviews").insert(row).execute()
     inserted = res.data[0]
+
+    # Increment quotas after successful interview record creation
+    now_iso = datetime.now(UTC).isoformat()
+    for q in user_quota_res.data or []:
+        await (
+            client.table("quotas")
+            .update({"used_units": q["used_units"] + 1, "updated_at": now_iso})
+            .eq("id", q["id"])
+            .execute()
+        )
+    for q in college_quota_rows:
+        await (
+            client.table("quotas")
+            .update({"used_units": q["used_units"] + 1, "updated_at": now_iso})
+            .eq("id", q["id"])
+            .execute()
+        )
+
     return CreateInterviewResult(interview_id=inserted["id"], status=inserted["status"])
 
 
@@ -325,8 +396,10 @@ async def get_next_turn(interview_id: str) -> NextTurnResult:
 async def submit_answer(
     interview_id: str,
     turn_id: str,
-    audio_bytes: bytes,
-    answer_duration_seconds: float,
+    audio_bytes: bytes | None = None,
+    answer_duration_seconds: float = 0.0,
+    *,
+    audio_key: str | None = None,
 ) -> SubmitAnswerResult:
     """Transcribe one answer (Groq, falling back to Sarvam), store it, and
     return what comes next. `answer_duration_seconds` is the browser's own
@@ -353,10 +426,20 @@ async def submit_answer(
             f"{max_answer_seconds}s per-answer limit; rejected, not transcribed"
         )
 
+    # If audio_key provided and audio_bytes not, fetch from R2
+    if audio_key and (audio_bytes is None or len(audio_bytes) == 0):
+        audio_bytes = await r2.get_object_bytes(audio_key)
+    elif audio_bytes and not audio_key:
+        audio_key = f"answers/{interview_id}/{turn_id}.webm"
+        try:
+            await r2.put_object_bytes(audio_key, audio_bytes, content_type="audio/webm")
+        except Exception:  # noqa: BLE001
+            audio_key = None
+
     vocabulary_hint = await _vocabulary_hint(client, interview["user_id"])
 
     started = time.monotonic()
-    fallback_result = await transcribe_with_fallback(audio_bytes, vocabulary_hint)
+    fallback_result = await transcribe_with_fallback(audio_bytes or b"", vocabulary_hint)
     latency_ms = int((time.monotonic() - started) * 1000)
 
     cost_paise = compute_cost_paise(
@@ -375,17 +458,19 @@ async def submit_answer(
         college_id=interview.get("college_id"),
     )
 
+    update_payload: dict[str, Any] = {
+        "transcript": fallback_result.result.text,
+        "answer_duration_seconds": answer_duration_seconds,
+        "stt_provider": fallback_result.stt_provider,
+        "stt_fallback_used": fallback_result.fallback_used,
+        "latency_ms": latency_ms,
+    }
+    if audio_key:
+        update_payload["answer_audio_key"] = audio_key
+
     await (
         client.table("interview_turns")
-        .update(
-            {
-                "transcript": fallback_result.result.text,
-                "answer_duration_seconds": answer_duration_seconds,
-                "stt_provider": fallback_result.stt_provider,
-                "stt_fallback_used": fallback_result.fallback_used,
-                "latency_ms": latency_ms,
-            }
-        )
+        .update(update_payload)
         .eq("id", turn_id)
         .execute()
     )
@@ -401,9 +486,13 @@ async def submit_answer(
     )
 
 
-async def finish_interview(interview_id: str) -> None:
-    """End the interview and run the evaluation report synchronously (a
-    real queue is Phase 4 polish, not required here — BUILD_SPEC Part 7).
+async def finish_interview(
+    interview_id: str,
+    *,
+    eye_contact_pct: float | None = None,
+    posture_stability_pct: float | None = None,
+) -> None:
+    """End the interview and run the evaluation report with retries and recovery.
     Idempotent: calling this on an already-ended interview is a no-op."""
     client = await get_client()
     interview = await _load_interview(client, interview_id)
@@ -415,9 +504,19 @@ async def finish_interview(interview_id: str) -> None:
     started_at = _parse_timestamp(started_at_raw) if started_at_raw else now
     duration_seconds = max(int((now - started_at).total_seconds()), 0)
 
+    update_payload: dict[str, Any] = {
+        "status": "completed",
+        "ended_at": now.isoformat(),
+        "duration_seconds": duration_seconds,
+    }
+    if eye_contact_pct is not None:
+        update_payload["eye_contact_pct"] = eye_contact_pct
+    if posture_stability_pct is not None:
+        update_payload["posture_stability_pct"] = posture_stability_pct
+
     await (
         client.table("interviews")
-        .update({"status": "completed", "ended_at": now.isoformat(), "duration_seconds": duration_seconds})
+        .update(update_payload)
         .eq("id", interview_id)
         .execute()
     )
@@ -430,96 +529,38 @@ async def finish_interview(interview_id: str) -> None:
                 "user_id": interview["user_id"],
                 "college_id": interview.get("college_id"),
                 "status": "pending",
+                "eye_contact_pct": eye_contact_pct if eye_contact_pct is not None else interview.get("eye_contact_pct"),
+                "posture_stability_pct": posture_stability_pct if posture_stability_pct is not None else interview.get("posture_stability_pct"),
             },
             on_conflict="interview_id",
         )
         .execute()
     )
 
+    from app.reports.worker import evaluate_and_save_report
+
+    await evaluate_and_save_report(interview_id, client=client)
+
+
+async def get_interview_turns(interview_id: str) -> list[dict[str, Any]]:
+    """Fetch turns for an interview, resolving signed download URLs for question and answer audio."""
+    client = await get_client()
     turns = await _load_turns(client, interview_id)
-    transcript_turns = [
-        {
-            "turn_number": t["turn_number"],
-            "stage": t["stage"],
-            "question": t["question_text"],
-            "answer": t.get("transcript") or "",
-        }
-        for t in turns
-    ]
-
-    try:
-        evaluation = await gemini.evaluate_interview(
-            transcript_turns=transcript_turns,
-            eye_contact_pct=interview.get("eye_contact_pct"),
-            posture_stability_pct=interview.get("posture_stability_pct"),
-            interview_type=interview["interview_type"],
-            target_role=interview.get("target_role"),
-            company_type=interview.get("company_type"),
-            difficulty=interview["difficulty"],
-        )
-    except Exception as exc:  # noqa: BLE001 - any evaluation failure must still record a failed report
-        await (
-            client.table("interview_reports")
-            .update({"status": "failed", "error_message": str(exc)})
-            .eq("interview_id", interview_id)
-            .execute()
-        )
-        return
-
-    units = {
-        "input_tokens": evaluation.input_tokens,
-        "output_tokens": evaluation.output_tokens,
-        "thoughts_tokens": evaluation.thoughts_tokens,
-    }
-    cost_paise = compute_cost_paise(provider="gemini", model=evaluation.model_id, units=units)
-    await log_usage_event(
-        feature="interview",
-        provider="gemini",
-        model=evaluation.model_id,
-        units=units,
-        cost_paise=cost_paise,
-        interview_id=interview_id,
-        user_id=interview["user_id"],
-        college_id=interview.get("college_id"),
-    )
-
-    await (
-        client.table("interview_reports")
-        .update(
-            {
-                "status": "completed",
-                "scores": evaluation.scores,
-                "overall_score": evaluation.overall_score,
-                "strengths": evaluation.strengths,
-                "weak_areas_summary": evaluation.weak_areas,
-                "practice_actions": evaluation.practice_actions,
-                "eye_contact_pct": interview.get("eye_contact_pct"),
-                "posture_stability_pct": interview.get("posture_stability_pct"),
-                "model_id": evaluation.model_id,
-                "prompt_version": EVALUATION_PROMPT_VERSION,
-                "error_message": None,
-            }
-        )
-        .eq("interview_id", interview_id)
-        .execute()
-    )
-
-    if evaluation.weak_areas:
-        rows = [
-            {
-                "user_id": interview["user_id"],
-                "college_id": interview.get("college_id"),
-                "skill": weak_area["skill"],
-                "severity": weak_area.get("severity", "medium"),
-                "source": "interview_report",
-                "source_interview_id": interview_id,
-                "notes": weak_area.get("notes"),
-            }
-            for weak_area in evaluation.weak_areas
-        ]
-        await client.table("weak_areas").insert(rows).execute()
-
-    await _rollup_interview_cost(client, interview_id)
+    results: list[dict[str, Any]] = []
+    for turn in turns:
+        t = dict(turn)
+        q_key = turn.get("question_audio_key")
+        a_key = turn.get("answer_audio_key")
+        try:
+            t["question_audio_url"] = r2.generate_download_url(q_key) if q_key else None
+        except Exception:  # noqa: BLE001
+            t["question_audio_url"] = None
+        try:
+            t["answer_audio_url"] = r2.generate_download_url(a_key) if a_key else None
+        except Exception:  # noqa: BLE001
+            t["answer_audio_url"] = None
+        results.append(t)
+    return results
 
 
 async def get_report(interview_id: str) -> ReportResult:

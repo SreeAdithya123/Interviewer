@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { UserPlus, Users, CreditCard, ArrowRight } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/auth/current-profile";
 import { READINESS_BANDS, READINESS_LABEL, readinessBand, type ReadinessBand } from "@/lib/readiness";
@@ -133,6 +135,57 @@ export default async function CollegeAdminOverview({ profile }: { profile: Profi
           (no real evaluation model connected yet), not a real assessment of these students.
         </p>
       )}
+
+      {/* Quick Operations Row */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <Link
+          href="/app/invites"
+          className="group flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-soft transition-all hover:border-primary/50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+              <UserPlus className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-headline text-sm font-semibold text-foreground">Invite Students</p>
+              <p className="font-body text-xs text-muted-foreground">Upload CSV or batch invite</p>
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-primary" />
+        </Link>
+
+        <Link
+          href="/app/students"
+          className="group flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-soft transition-all hover:border-accent/50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
+              <Users className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-headline text-sm font-semibold text-foreground">Student Roster</p>
+              <p className="font-body text-xs text-muted-foreground">Readiness & score reports</p>
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-accent" />
+        </Link>
+
+        <Link
+          href="/app/billing"
+          className="group flex items-center justify-between rounded-2xl border border-border bg-card p-4 shadow-soft transition-all hover:border-emerald-500/50"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-emerald-500/20 bg-emerald-500/10 text-emerald-600">
+              <CreditCard className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-headline text-sm font-semibold text-foreground">Quotas & Billing</p>
+              <p className="font-body text-xs text-muted-foreground">Manage limits & upgrade</p>
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground transition-transform group-hover:translate-x-1 group-hover:text-emerald-600" />
+        </Link>
+      </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatTile label="Students" value={String(students.length)} />

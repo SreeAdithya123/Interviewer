@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -5,8 +6,9 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabasePublishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!;
 
 // For use in Server Components, Server Actions, and Route Handlers.
-// Call this per-request — it reads the current request's cookies.
-export async function createClient() {
+// Cached per-request so multiple calls within the same render pass share
+// the same client instance without re-instantiating or re-reading cookies.
+export const createClient = cache(async () => {
   const cookieStore = await cookies();
 
   return createServerClient(supabaseUrl, supabasePublishableKey, {
@@ -26,4 +28,4 @@ export async function createClient() {
       },
     },
   });
-}
+});

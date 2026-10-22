@@ -1,0 +1,132 @@
+[
+  {
+    "id": "cov-01",
+    "question": "What is the interview round structure for Amazon SDE-1 campus placements and how are Leadership Principles evaluated?",
+    "covered": true,
+    "expected_doc_title": "Amazon SDE-1 Campus Interview Guide & Leadership Principles",
+    "expected_topics": ["Online Assessment", "Leadership Principles", "Bar Raiser", "Customer Obsession"]
+  },
+  {
+    "id": "cov-02",
+    "question": "How should I structure behavioral interview answers using the STAR method?",
+    "covered": true,
+    "expected_doc_title": "Mastering the STAR Method for Behavioral Interviews",
+    "expected_topics": ["Situation", "Task", "Action", "Result"]
+  },
+  {
+    "id": "cov-03",
+    "question": "What are the common technical rounds and DSA topics expected in Google campus SWE interviews?",
+    "covered": true,
+    "expected_doc_title": "Google Campus Software Engineer Interview Structure & Technical Expectations",
+    "expected_topics": ["Data Structures", "Algorithms", "Googleyness", "Big-O"]
+  },
+  {
+    "id": "cov-04",
+    "question": "What are the core system design topics like caching and load balancing expected for campus placements?",
+    "covered": true,
+    "expected_doc_title": "System Design Fundamentals for Campus Placement Interviews",
+    "expected_topics": ["Caching", "Redis", "Load Balancing", "Rate Limiting"]
+  },
+  {
+    "id": "cov-05",
+    "question": "What is the hiring pattern and online test syllabus for TCS Digital and Prime campus placements?",
+    "covered": true,
+    "expected_doc_title": "TCS Digital and Prime Hiring Pattern & Assessment Syllabus",
+    "expected_topics": ["Advanced Coding", "Cognitive", "Digital", "Prime"]
+  },
+  {
+    "id": "cov-06",
+    "question": "How should I structure my resume for campus placement shortlisting and ATS screening?",
+    "covered": true,
+    "expected_doc_title": "ATS-Safe Resume Building and Placement Shortlisting Standards",
+    "expected_topics": ["Single-Column", "Action verbs", "ATS", "Metrics"]
+  },
+  {
+    "id": "cov-07",
+    "question": "What coding and low-level design rounds does Microsoft typically conduct during campus hiring?",
+    "covered": true,
+    "expected_doc_title": "Microsoft Campus SDE Interview Workflow & Low-Level Design",
+    "expected_topics": ["Low-Level Design", "SOLID", "Data Structures", "OOP"]
+  },
+  {
+    "id": "cov-08",
+    "question": "What should a candidate do if they get stuck or experience a mental block on a coding problem during an interview?",
+    "covered": true,
+    "expected_doc_title": "Mock Interview Strategies: Thinking Aloud and Handling Stalls",
+    "expected_topics": ["Think Aloud", "Brute-force", "Clarify", "Hints"]
+  },
+  {
+    "id": "cov-09",
+    "question": "What is the recommended roadmap for mastering Data Structures and Algorithms for tier-1 campus placements?",
+    "covered": true,
+    "expected_doc_title": "Data Structures & Algorithms Tier-1 Campus Placement Roadmap",
+    "expected_topics": ["Arrays", "Trees", "Graphs", "Dynamic Programming"]
+  },
+  {
+    "id": "cov-10",
+    "question": "What are typical college placement cell rules regarding attendance and the one-student-one-offer policy?",
+    "covered": true,
+    "expected_doc_title": "University Placement Cell Guidelines, Attendance & Offer Policies",
+    "expected_topics": ["Attendance", "One-Student-One-Offer", "TPO", "PPO"]
+  },
+  {
+    "id": "uncov-01",
+    "question": "What is the propulsion avionics interview process for Raptor rocket engines at SpaceX Boca Chica?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-02",
+    "question": "What is the stock grant formula for Netflix Principal Software Engineers in Los Gatos?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-03",
+    "question": "What are the MCAT cutoff scores and interview formats for Johns Hopkins School of Medicine MD program?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-04",
+    "question": "How do you cultivate Hass avocado trees in Mediterranean alkaline soil with drip irrigation?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-05",
+    "question": "What were the main debate topics in the 2017 French presidential election between Macron and Le Pen?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-06",
+    "question": "What are the structural aerodynamic differences between Airbus A350 and Boeing 787 wing flex designs?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-07",
+    "question": "What is the starting salary and tax rate for offshore drilling petroleum engineers in Stavanger Norway?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-08",
+    "question": "How does Honeywell Quantum Solutions implement surface code quantum error correction on ytterbium ions?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-09",
+    "question": "What are the residency visa requirements and income proof for digital nomads in Costa Rica in 2026?",
+    "covered": false,
+    "expected_doc_title": null
+  },
+  {
+    "id": "uncov-10",
+    "question": "What is the traditional fermentation time and oven steam schedule for artisan Parisian sourdough baguettes?",
+    "covered": false,
+    "expected_doc_title": null
+  }
+]

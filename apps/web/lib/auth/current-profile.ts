@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 export type ProfileRole = "student" | "college_admin" | "platform_admin";
@@ -36,7 +37,7 @@ export interface Profile {
  * filters by the caller's own id explicitly — without that filter a
  * college_admin/platform_admin's query could return more than one row.
  */
-export async function getCurrentProfile(): Promise<Profile | null> {
+export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
   const supabase = await createClient();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -55,7 +56,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   }
 
   return data as Profile;
-}
+});
 
 /**
  * True when a profile still needs to go through /onboarding before using

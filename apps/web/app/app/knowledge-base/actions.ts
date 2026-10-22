@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentProfile } from "@/lib/auth/current-profile";
 import { createClient } from "@/lib/supabase/server";
-import { embedDocumentStub } from "@/lib/ai-stubs/embed-document";
+import { engineEmbedDocument } from "@/lib/chat/engine-client";
 import type { KbCategory, ReviewStatus } from "@/lib/types/db";
 
 // Re-checked here too (see app/app/colleges/actions.ts's header comment) —
@@ -100,15 +100,14 @@ export async function setDocumentStatus(formData: FormData) {
   revalidatePath(`/app/knowledge-base/${id}`);
 }
 
-/** "Approve → chunk & embed" — see lib/ai-stubs/embed-document.ts for what this does and doesn't do. */
+/** "Approve → chunk & embed" via real FastAPI engine (BUILD_SPEC Part 4.8). */
 export async function approveAndEmbedDocument(formData: FormData) {
   const profile = await requirePlatformAdmin();
-  const supabase = await createClient();
 
   const id = String(formData.get("id") ?? "");
   if (!id) throw new Error("Missing document id.");
 
-  await embedDocumentStub(supabase, id, profile.id);
+  await engineEmbedDocument(id, profile.id);
 
   revalidatePath("/app/knowledge-base");
   revalidatePath(`/app/knowledge-base/${id}`);

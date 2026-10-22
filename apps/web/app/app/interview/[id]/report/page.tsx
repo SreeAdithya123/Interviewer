@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { InterviewReportClient } from "@/components/interview/InterviewReportClient";
+import { getInterviewTurns } from "@/lib/interview/actions";
 import type { Interview, InterviewReport, InterviewTurn } from "@/lib/interview/types";
 
 export const metadata: Metadata = {
@@ -13,11 +14,8 @@ interface InterviewReportPageProps {
 }
 
 // /app/interview/[id]/report — BUILD_SPEC Part 4.5 step 9. Reads real
-// rows from `interviews`/`interview_reports`/`interview_turns`; in stub
-// mode the report row was written by finish_stub_interview() (see
-// supabase/migrations/20261017180000_interview_stub_bridge.sql) with
-// model_id = 'stub-fixture-v1', which InterviewReportClient's preview
-// badge makes visible rather than presenting it as a real evaluation.
+// rows from `interviews`/`interview_reports`/`interview_turns` with R2
+// signed download URLs for permanent audio playback across page reloads.
 export default async function InterviewReportPage({ params }: InterviewReportPageProps) {
   const { id } = await params;
   const supabase = await createClient();
@@ -37,16 +35,29 @@ export default async function InterviewReportPage({ params }: InterviewReportPag
     );
   }
 
-  const [reportRes, turnsRes] = await Promise.all([
-    supabase.from("interview_reports").select("*").eq("interview_id", id).maybeSingle(),
-    supabase.from("interview_turns").select("*").eq("interview_id", id).order("turn_number", { ascending: true }),
-  ]);
+  let turns: InterviewTurn[] = [];
+  try {
+    turns = await getInterviewTurns(id);
+  } catch {
+    const turnsRes = await supabase
+      .from("interview_turns")
+      .select("*")
+      .eq("interview_id", id)
+      .order("turn_number", { ascending: true });
+    turns = (turnsRes.data as InterviewTurn[]) ?? [];
+  }
+
+  const { data: report } = await supabase
+    .from("interview_reports")
+    .select("*")
+    .eq("interview_id", id)
+    .maybeSingle();
 
   return (
     <InterviewReportClient
       interview={interview as Interview}
-      report={(reportRes.data as InterviewReport | null) ?? null}
-      turns={(turnsRes.data as InterviewTurn[] | null) ?? []}
+      report={(report as InterviewReport | null) ?? null}
+      turns={turns}
     />
   );
 }

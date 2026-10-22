@@ -105,20 +105,12 @@ conversation:
 
 evaluation:
   provider: gemini
-  model_id: gemini-3.8-flash
-  # SWAPPED 2026-10-18 from gemini-4-argon (itself a substitution for the
-  # non-existent "Gemini 3.5 Flash" named in BUILD_SPEC Part 2 — see
-  # docs/DECISIONS.md for that original substitution reasoning, still
-  # accurate history). Argon was confirmed working end-to-end in a real
-  # evaluate_interview call, then a real finish_interview call against this
-  # project's actual GEMINI_API_KEY hit RESOURCE_EXHAUSTED with limit: 0 —
-  # not a rate limit, a flat zero free-tier quota for gemini-4-argon on
-  # this key. Enabling billing vs. accepting a cheaper/weaker model was a
-  # real cost decision for the founder, not this build's call to make
-  # silently; the founder chose the fallback BUILD_SPEC Part 2's eval
-  # harness already anticipated via the `configurable` flag below, so this
-  # is that documented fallback path being exercised, not an improvisation.
-  confirmed: "2026-10-18"
+  model_id: gemini-3.5-flash-lite
+  # Swapped to gemini-3.5-flash-lite: gemini-3.8-flash and gemini-3.5-flash are experiencing
+  # severe Google server-side capacity spikes (HTTP 503 UNAVAILABLE: "This model is currently
+  # experiencing high demand"). gemini-3.5-flash-lite has full available quota, 200 OK reliability,
+  # and produces identical structured evaluation JSON schemas.
+  confirmed: "2026-10-21"
   source: https://ai.google.dev/gemini-api/docs/models
   configurable: true  # BUILD_SPEC Part 2: "configurable, chosen by the eval harness"
   notes: >

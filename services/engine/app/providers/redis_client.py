@@ -78,3 +78,15 @@ async def check_and_increment_quota(key: str, limit: int, window_seconds: int) -
 
     count = int(results[0])
     return count <= limit
+
+
+async def check_rate_limit(key: str, limit: int, window_seconds: int) -> bool:
+    """Safe wrapper around check_and_increment_quota.
+    Fails open (returns True) if Redis is not configured or in test environments.
+    """
+    if not (os.environ.get("UPSTASH_REDIS_REST_URL") and os.environ.get("UPSTASH_REDIS_REST_TOKEN")):
+        return True
+    try:
+        return await check_and_increment_quota(key, limit=limit, window_seconds=window_seconds)
+    except Exception:  # noqa: BLE001
+        return True

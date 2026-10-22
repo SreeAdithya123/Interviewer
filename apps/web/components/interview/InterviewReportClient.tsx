@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { RotateCw, AlertCircle } from "lucide-react";
 import { Card, PreviewBadge, StatusPill } from "@/components/interview/primitives";
+import { retryInterviewReport } from "@/lib/interview/actions";
 import { getTurnAudio } from "@/lib/interview/audio-store";
 import { formatClock } from "@/lib/interview/recording";
 import {
@@ -32,6 +35,36 @@ export function InterviewReportClient({
   report: InterviewReport | null;
   turns: InterviewTurn[];
 }) {
+  const router = useRouter();
+
+  const isPending =
+    report?.status === "pending" || (!report && interview.status === "completed");
+
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+
+  async function handleRetry() {
+    setRetrying(true);
+    setRetryError(null);
+    try {
+      await retryInterviewReport(interview.id);
+      router.refresh();
+    } catch (err) {
+      setRetryError(err instanceof Error ? err.message : "Failed to retry evaluation.");
+    } finally {
+      setRetrying(false);
+    }
+  }
+
+  useEffect(() => {
+    if (isPending) {
+      const interval = setInterval(() => {
+        router.refresh();
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [isPending, router]);
+
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -52,21 +85,67 @@ export function InterviewReportClient({
         {report?.model_id === "stub-fixture-v1" && <PreviewBadge />}
       </div>
 
-      {!report && (
+      {isPending && (
+        <Card className="flex items-center gap-3">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <p className="font-body text-sm text-foreground">
+            Evaluating your interview and generating your comprehensive report...
+          </p>
+        </Card>
+      )}
+
+      {!report && interview.status !== "completed" && (
         <Card>
           <p className="font-body text-sm text-muted-foreground">
-            {interview.status === "completed"
-              ? "This interview finished, but its report hasn't been generated yet."
-              : "This interview hasn't been completed yet."}
+            This interview hasn&apos;t been completed yet.
           </p>
         </Card>
       )}
 
       {report && report.status === "failed" && (
-        <Card>
-          <p className="font-body text-sm text-destructive">
-            Report generation failed{report.error_message ? `: ${report.error_message}` : "."}
-          </p>
+        <Card className="space-y-4 border-destructive/30 bg-destructive/5">
+          <div className="flex items-start gap-3">
+            <div className="rounded-2xl border border-destructive/20 bg-destructive/10 p-2.5 text-destructive">
+              <AlertCircle className="h-5 w-5" />
+            </div>
+            <div className="flex-1 space-y-1">
+              <h3 className="font-headline text-base font-semibold text-foreground">
+                Report Generation Delayed
+              </h3>
+              <p className="font-body text-xs text-muted-foreground">
+                The evaluation model experienced a transient demand spike (HTTP 503) while scoring this session. Your transcript and audio are safely saved.
+              </p>
+              {report.error_message && (
+                <p className="font-mono text-[11px] text-destructive/80 bg-background/80 border border-destructive/20 p-2.5 rounded-xl break-all">
+                  {report.error_message}
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="button"
+              onClick={handleRetry}
+              disabled={retrying}
+              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 font-body text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary-hover disabled:opacity-60"
+            >
+              {retrying ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
+                  <span>Evaluating now...</span>
+                </>
+              ) : (
+                <>
+                  <RotateCw className="h-3.5 w-3.5" />
+                  <span>Retry Evaluation</span>
+                </>
+              )}
+            </button>
+            {retryError && (
+              <span className="font-body text-xs text-destructive">{retryError}</span>
+            )}
+          </div>
         </Card>
       )}
 
@@ -170,17 +249,15 @@ export function InterviewReportClient({
 
 function TranscriptTurn({ interviewId, turn }: { interviewId: string; turn: InterviewTurn }) {
   const blob = useMemo(() => getTurnAudio(interviewId, turn.turn_number), [interviewId, turn.turn_number]);
-  // Derived synchronously from `blob` (itself memoized) rather than via
-  // setState-in-an-effect, so there's no extra render pass; the effect
-  // below only handles the one genuinely side-effectful part (freeing the
-  // blob URL), not state assignment.
-  const audioUrl = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
+  const localUrl = useMemo(() => (blob ? URL.createObjectURL(blob) : null), [blob]);
 
   useEffect(() => {
     return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      if (localUrl) URL.revokeObjectURL(localUrl);
     };
-  }, [audioUrl]);
+  }, [localUrl]);
+
+  const audioUrl = turn.answer_audio_url || localUrl;
 
   return (
     <li className="rounded-2xl border border-border bg-background p-4">
@@ -203,7 +280,7 @@ function TranscriptTurn({ interviewId, turn }: { interviewId: string; turn: Inte
         <audio controls src={audioUrl} className="mt-3 w-full" />
       ) : (
         <p className="mt-3 font-body text-xs text-muted-foreground">
-          Recording unavailable (not from this browser tab, or the page was reloaded).
+          Recording unavailable.
         </p>
       )}
     </li>

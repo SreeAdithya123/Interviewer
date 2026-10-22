@@ -27,3 +27,6 @@ __pycache__/
 
 # Coverage
 coverage/
+
+# Supabase CLI
+supabase/.temp/
