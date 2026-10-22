@@ -2,6 +2,13 @@
 
 Decisions made while executing docs/BUILD_SPEC.md that the spec left to us, recorded with one line of reasoning each, newest first.
 
+## Phase 8: Cloudflare Edge Deployment, Redirections & Dual Authentication
+
+- **Session cookies from `exchangeCodeForSession` are explicitly copied onto the outgoing `NextResponse.redirect` object**, not assumed to propagate via Next.js's `cookies().set(...)`. In Route Handlers running on `@opennextjs/cloudflare` (workerd), returning a fresh `NextResponse.redirect(...)` can drop cookies queued in the async request store unless they are explicitly attached to the redirect response headers.
+- **The login form supports both one-click magic links and direct 6-digit numeric OTP code entry (`supabase.auth.verifyOtp`)**, rather than relying solely on PKCE magic links. PKCE requires the `code_verifier` cookie to be present in the browser that opens the link; if a student opens their email on a mobile phone or secondary browser, the PKCE handshake fails with `auth_callback_failed`. Direct 6-digit code entry bypasses browser-cookie coupling completely and works across any device or email client.
+- **`NEXT_PUBLIC_SITE_URL` is configured both at build time in `.env.local` and at runtime in `wrangler.jsonc`**, so that SSG routes (such as `sitemap.xml` and `robots.txt` generated during `next build`) and dynamic SSR edge routes both resolve to the canonical production URL `https://vyoman-interviewer.sreeadithya-ndd.workers.dev` rather than `http://localhost:3000`.
+- **`apps/web/app/auth/callback/route.ts` inspects `x-forwarded-host` and `x-forwarded-proto` before falling back to request URL origin**, ensuring correct protocol and domain preservation behind Cloudflare's edge proxy infrastructure.
+
 ## Phase 3: the resume scanner
 
 - **A structured resume's `parsed_resume`/`parse_health` are never Gemini's own output — the wrapper substitutes the original `resume_data` and a deterministic, non-LLM `parse_health` after the call returns.** The prompt still asks Gemini for all four dimensions on every call, structured-data or PDF, so there's exactly one prompt and one HTTP call shape rather than a branch in `resume_scan_v1.txt` itself; the override happens in `app/resume/engine.py`, the orchestration layer, not the provider client. The alternative (trust Gemini's echo) would risk rewording the student's own authored content on a round trip that didn't need to happen, and — concretely, not just theoretically — could never reproduce the frontend-generated `id` field every `ResumeData` array item needs for React keys, since those ids aren't derivable from the resume's content at all.

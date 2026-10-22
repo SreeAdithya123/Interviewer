@@ -1,5 +1,30 @@
 # Progress
 
+## Phase 8: Cloudflare Edge Deployment, Production Redirections & Dual Auth Verification — PASS
+
+- **Cloudflare Workers Edge Deployment (`apps/web`)**:
+  - Packaged Next.js 16.4.1 (Turbopack, React 19) using `@opennextjs/cloudflare` v1.20.12.
+  - Deployed live to Cloudflare Workers (`vyoman-interviewer`): **`https://vyoman-interviewer.sreeadithya-ndd.workers.dev`**.
+  - Connected Next.js Incremental Cache with Cloudflare R2 bucket `vyoman-interviewer-opennext-cache` (13 cache entries seeded).
+  - Deployed 53 static chunks, styles, and assets to Cloudflare Global CDN with sub-50ms TTFB edge caching (`x-nextjs-cache: HIT`).
+  - Configured runtime environment variables in `wrangler.jsonc`: `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `DEMO_REQUEST_NOTIFY_EMAIL`, `DEMO_REQUEST_FROM_EMAIL`.
+  - Provisioned encrypted worker secret via Wrangler: `RESEND_API_KEY`.
+- **Production URL Configuration & Canonical Redirections**:
+  - Integrated `NEXT_PUBLIC_SITE_URL` across build and runtime (`wrangler.jsonc` and `.env.local`).
+  - Prerendered `sitemap.xml` and `robots.txt` now emit canonical `https://vyoman-interviewer.sreeadithya-ndd.workers.dev` URLs.
+  - Updated `apps/web/app/auth/callback/route.ts` with proxy-aware header resolution (`x-forwarded-host`, `x-forwarded-proto`) and safe relative `?next=/...` query param navigation.
+- **Dual Authentication & PKCE Workerd Cookie Fix**:
+  - **Workerd Cookie Propagation**: Fixed issue where `NextResponse.redirect` in Next.js 16 route handlers on workerd did not forward `cookieStore.set` cookies; `route.ts` now explicitly stamps all `Set-Cookie` session headers directly onto `redirectResponse.cookies.set(...)`.
+  - **Dual OTP Verification**: Upgraded `apps/web/components/auth/EmailOtpForm.tsx` to support both:
+    1. Standard one-click sign-in magic link (for same-browser clicks).
+    2. Direct 6-digit numeric verification code entry (`supabase.auth.verifyOtp`), bypassing PKCE code verifier cookie dependencies when users open emails on phones, other browsers, or behind corporate email scanners.
+  - Added user-facing error banners to `apps/web/app/login/page.tsx` for clear visibility on expired or mismatched links.
+- **Verification & Repo Sync**:
+  - Full TypeScript typecheck (`tsc --noEmit`): **0 errors**.
+  - Web unit tests: **5/5 passed**.
+  - Engine test suite: **110/110 passed**.
+  - All changes committed and pushed to `origin/main` (`https://github.com/SreeAdithya123/Interviewer.git`).
+
 ## Phase 7: Quality harness, hardening, deploy workflows, and Razorpay — PASS
 
 - **Golden Set Evaluation Harness (`eval/golden_set_eval.py`)**:
