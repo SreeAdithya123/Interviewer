@@ -15,8 +15,16 @@ import { profileNeedsOnboarding } from "@/lib/auth/current-profile";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
-  const code = searchParams.get("code");
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
+  const next = requestUrl.searchParams.get("next");
+
+  // Determine origin safely behind Cloudflare Workers or reverse proxies
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  const origin = forwardedHost
+    ? `${forwardedProto ?? "https"}://${forwardedHost}`
+    : (process.env.NEXT_PUBLIC_SITE_URL ?? requestUrl.origin);
 
   if (!code) {
     return NextResponse.redirect(`${origin}/login?error=missing_code`);
@@ -35,6 +43,12 @@ export async function GET(request: Request) {
     .eq("id", data.user.id)
     .single();
 
-  const destination = profileNeedsOnboarding(profile) ? "/onboarding" : "/app";
+  const destination =
+    next && next.startsWith("/") && !next.startsWith("//")
+      ? next
+      : profileNeedsOnboarding(profile)
+        ? "/onboarding"
+        : "/app";
+
   return NextResponse.redirect(`${origin}${destination}`);
 }

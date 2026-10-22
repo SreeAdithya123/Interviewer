@@ -28,5 +28,9 @@ __pycache__/
 # Coverage
 coverage/
 
+# Cloudflare / OpenNext
+.wrangler/
+.open-next/
+
 # Supabase CLI
 supabase/.temp/
