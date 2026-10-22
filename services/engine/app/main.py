@@ -196,6 +196,8 @@ async def post_submit_answer(
     audio: UploadFile | None = File(None),  # noqa: B008
     audio_key: str | None = Form(None),
     answer_duration_seconds: float = Form(...),
+    candidate_code: str | None = Form(None),
+    code_language: str | None = Form(None),
 ) -> SubmitAnswerResponse:
     audio_bytes = await audio.read() if audio is not None else None
     if not audio_bytes and not audio_key:
@@ -208,6 +210,8 @@ async def post_submit_answer(
             audio_bytes=audio_bytes,
             answer_duration_seconds=answer_duration_seconds,
             audio_key=audio_key,
+            candidate_code=candidate_code,
+            code_language=code_language,
         )
     except engine.InterviewEngineError as exc:
         _raise_for_engine_error(exc)

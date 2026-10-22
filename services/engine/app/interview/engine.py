@@ -400,6 +400,8 @@ async def submit_answer(
     answer_duration_seconds: float = 0.0,
     *,
     audio_key: str | None = None,
+    candidate_code: str | None = None,
+    code_language: str | None = None,
 ) -> SubmitAnswerResult:
     """Transcribe one answer (Groq, falling back to Sarvam), store it, and
     return what comes next. `answer_duration_seconds` is the browser's own
@@ -458,8 +460,13 @@ async def submit_answer(
         college_id=interview.get("college_id"),
     )
 
+    full_transcript = fallback_result.result.text
+    if candidate_code and candidate_code.strip():
+        lang_tag = code_language or "code"
+        full_transcript = f"{full_transcript}\n\n[Candidate Code ({lang_tag})]:\n```{lang_tag}\n{candidate_code.strip()}\n```"
+
     update_payload: dict[str, Any] = {
-        "transcript": fallback_result.result.text,
+        "transcript": full_transcript,
         "answer_duration_seconds": answer_duration_seconds,
         "stt_provider": fallback_result.stt_provider,
         "stt_fallback_used": fallback_result.fallback_used,
@@ -479,7 +486,7 @@ async def submit_answer(
 
     return SubmitAnswerResult(
         turn_id=turn_id,
-        transcript=fallback_result.result.text,
+        transcript=full_transcript,
         stt_provider=fallback_result.stt_provider,
         stt_fallback_used=fallback_result.fallback_used,
         next_turn=next_turn,

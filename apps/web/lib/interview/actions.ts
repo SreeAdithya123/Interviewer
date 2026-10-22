@@ -109,6 +109,8 @@ export async function submitAnswer(formData: FormData): Promise<EngineSubmitAnsw
   const turnId = String(formData.get("turnId") ?? "");
   const answerDurationSeconds = Number(formData.get("answerDurationSeconds") ?? 0);
   const audio = formData.get("audio");
+  const candidateCode = formData.get("candidateCode") ? String(formData.get("candidateCode")) : undefined;
+  const codeLanguage = formData.get("codeLanguage") ? String(formData.get("codeLanguage")) : undefined;
 
   if (!interviewId || !turnId) {
     throw new Error("Missing interviewId or turnId.");
@@ -117,7 +119,7 @@ export async function submitAnswer(formData: FormData): Promise<EngineSubmitAnsw
     throw new Error("Missing recorded audio.");
   }
 
-  return engineSubmitAnswer(interviewId, turnId, audio, answerDurationSeconds);
+  return engineSubmitAnswer(interviewId, turnId, audio, answerDurationSeconds, candidateCode, codeLanguage);
 }
 
 export async function finishInterview(

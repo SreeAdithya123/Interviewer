@@ -97,10 +97,18 @@ export async function engineSubmitAnswer(
   turnId: string,
   audio: Blob,
   answerDurationSeconds: number,
+  candidateCode?: string,
+  codeLanguage?: string,
 ): Promise<EngineSubmitAnswerResult> {
   const form = new FormData();
   form.append("audio", audio, "answer.webm");
   form.append("answer_duration_seconds", String(answerDurationSeconds));
+  if (candidateCode) {
+    form.append("candidate_code", candidateCode);
+  }
+  if (codeLanguage) {
+    form.append("code_language", codeLanguage);
+  }
   return engineFetch(`/interviews/${interviewId}/turns/${turnId}/answer`, {
     method: "POST",
     body: form,

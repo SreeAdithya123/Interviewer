@@ -10,6 +10,8 @@ import { MAX_ANSWER_SECONDS, MAX_INTERVIEW_SECONDS } from "@/lib/interview/const
 import { formatClock, pickSupportedMimeType } from "@/lib/interview/recording";
 import { DIFFICULTY_LABELS, INTERVIEW_TYPE_LABELS, STAGE_LABELS } from "@/lib/interview/types";
 import type { Interview, InterviewStage } from "@/lib/interview/types";
+import CodingSandbox from "@/components/interview/CodingSandbox";
+import type { SupportedLanguage } from "@/lib/sandbox/types";
 
 type Phase =
   | "starting"
@@ -30,6 +32,8 @@ interface AnsweredTurn {
   isFollowUp: boolean;
   answerDurationSeconds: number;
   hasAudio: boolean;
+  candidateCode?: string;
+  codeLanguage?: string;
 }
 
 /** Minimal shape this component needs from @ricky0123/vad-web's MicVAD,
@@ -59,6 +63,23 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const [overallRemaining, setOverallRemaining] = useState(MAX_INTERVIEW_SECONDS);
   const [answerRemaining, setAnswerRemaining] = useState(MAX_ANSWER_SECONDS);
   const [vadStatus, setVadStatus] = useState<"unavailable" | "loading" | "active" | "off">("off");
+
+  // Coding Sandbox & Technical Layout States
+  const isTechnical = interview.interview_type === "technical";
+  const [layoutMode, setLayoutMode] = useState<"split" | "voice" | "code">(
+    isTechnical ? "split" : "voice"
+  );
+  const [candidateCode, setCandidateCode] = useState<string>("");
+  const [codeLanguage, setCodeLanguage] = useState<SupportedLanguage>("python");
+  const candidateCodeRef = useRef<string>("");
+  const codeLanguageRef = useRef<SupportedLanguage>("python");
+
+  const handleCodeChange = useCallback((newCode: string, lang: SupportedLanguage) => {
+    setCandidateCode(newCode);
+    setCodeLanguage(lang);
+    candidateCodeRef.current = newCode;
+    codeLanguageRef.current = lang;
+  }, []);
 
   // Set from the mount effect below, not here — `Date.now()` is an impure
   // call and must not run during render (react-hooks/purity).
@@ -238,6 +259,12 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
         // rather than silently skipping the submission.
         form.append("audio", blob ?? new Blob([], { type: "audio/webm" }), "answer.webm");
 
+        // Forward candidate code if written in the sandbox
+        if (candidateCodeRef.current.trim()) {
+          form.append("candidateCode", candidateCodeRef.current);
+          form.append("codeLanguage", codeLanguageRef.current);
+        }
+
         const result = await submitAnswer(form);
 
         setAnswered((prev) => [
@@ -250,6 +277,8 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
             isFollowUp: turn.is_follow_up,
             answerDurationSeconds,
             hasAudio: blob !== null && blob.size > 0,
+            candidateCode: candidateCodeRef.current.trim() || undefined,
+            codeLanguage: codeLanguageRef.current,
           },
         ]);
 
@@ -392,7 +421,8 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   }
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className={`space-y-6 ${layoutMode === "split" ? "max-w-7xl mx-auto" : "max-w-3xl mx-auto"}`}>
+      {/* Top Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="font-headline text-2xl font-semibold tracking-tight text-foreground">
@@ -404,90 +434,290 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
             {interview.company_type ? ` · ${interview.company_type}` : ""}
           </p>
         </div>
-        <StatusPill tone={overallRemaining < 120 ? "warning" : "neutral"}>
-          {formatClock(overallRemaining)} left
-        </StatusPill>
+
+        <div className="flex items-center gap-3">
+          {/* Layout Mode Switcher */}
+          <div className="flex items-center rounded-xl border border-border bg-card p-1 text-xs shadow-soft">
+            <button
+              type="button"
+              onClick={() => setLayoutMode("voice")}
+              className={`rounded-lg px-2.5 py-1 font-medium transition ${
+                layoutMode === "voice"
+                  ? "bg-primary text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Voice dialogue focus"
+            >
+              🎙️ Voice
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode("split")}
+              className={`rounded-lg px-2.5 py-1 font-medium transition ${
+                layoutMode === "split"
+                  ? "bg-primary text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Voice + Code Sandbox split screen"
+            >
+              ⚡ Split
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutMode("code")}
+              className={`rounded-lg px-2.5 py-1 font-medium transition ${
+                layoutMode === "code"
+                  ? "bg-primary text-primary-foreground font-semibold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Code sandbox focus"
+            >
+              💻 Code
+            </button>
+          </div>
+
+          <StatusPill tone={overallRemaining < 120 ? "warning" : "neutral"}>
+            {formatClock(overallRemaining)} left
+          </StatusPill>
+        </div>
       </div>
 
-      <Card>
-        {phase === "starting" && <StatusLine text="Starting your interview..." />}
-        {phase === "thinking" && <StatusLine text="Preparing the next question..." pulse />}
-        {phase === "finishing" && <StatusLine text="Wrapping up and generating your report..." pulse />}
+      {/* Main Workspace */}
+      {layoutMode === "split" ? (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column: Voice & Question Dialogue */}
+          <div className="lg:col-span-5 space-y-6">
+            <Card>
+              {phase === "starting" && <StatusLine text="Starting your interview..." />}
+              {phase === "thinking" && <StatusLine text="Preparing the next question..." pulse />}
+              {phase === "finishing" && <StatusLine text="Wrapping up and generating your report..." pulse />}
 
-        {currentTurn && (phase === "awaiting_recording" || phase === "recording" || phase === "requesting_mic" || phase === "saving_turn") && (
-          <div>
-            <div className="flex items-center justify-between gap-3">
-              <StatusPill>{STAGE_LABELS[currentTurn.stage ?? "intro"]}</StatusPill>
-              <span className="font-body text-xs text-muted-foreground">
-                Question {answered.length + 1}
-                {currentTurn.is_follow_up ? " · follow-up" : ""}
-              </span>
-            </div>
-
-            <p className="mt-4 font-body text-lg leading-body text-foreground">{currentTurn.question_text}</p>
-
-            <div className="mt-6 flex flex-wrap items-center gap-4">
-              {phase === "awaiting_recording" && (
-                <button type="button" className="btn-primary" onClick={startRecording}>
-                  Start recording my answer
-                </button>
-              )}
-
-              {phase === "requesting_mic" && <StatusLine text="Requesting microphone access..." />}
-
-              {phase === "recording" && (
-                <>
-                  <StatusPill tone="live">Recording</StatusPill>
-                  <span className="font-metric text-sm text-foreground">{formatClock(answerRemaining)} left to answer</span>
-                  <button type="button" className="btn-secondary" onClick={() => stopRecording(false)}>
-                    Done answering
-                  </button>
-                  {vadStatus === "active" && (
+              {currentTurn && (phase === "awaiting_recording" || phase === "recording" || phase === "requesting_mic" || phase === "saving_turn") && (
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <StatusPill>{STAGE_LABELS[currentTurn.stage ?? "intro"]}</StatusPill>
                     <span className="font-body text-xs text-muted-foreground">
-                      Auto-stop on silence is on — or tap Done.
+                      Question {answered.length + 1}
+                      {currentTurn.is_follow_up ? " · follow-up" : ""}
                     </span>
-                  )}
-                  {vadStatus === "loading" && (
-                    <span className="font-body text-xs text-muted-foreground">Loading auto-stop detection...</span>
-                  )}
-                  {vadStatus === "unavailable" && (
-                    <span className="font-body text-xs text-muted-foreground">
-                      Auto-stop detection unavailable here — tap Done when you&apos;re finished.
-                    </span>
-                  )}
-                </>
-              )}
+                  </div>
 
-              {phase === "saving_turn" && <StatusLine text="Transcribing and saving your answer..." />}
-            </div>
+                  <p className="mt-4 font-body text-base leading-relaxed text-foreground">{currentTurn.question_text}</p>
+
+                  <div className="mt-6 flex flex-wrap items-center gap-3">
+                    {phase === "awaiting_recording" && (
+                      <button type="button" className="btn-primary" onClick={startRecording}>
+                        Start recording my answer
+                      </button>
+                    )}
+
+                    {phase === "requesting_mic" && <StatusLine text="Requesting microphone access..." />}
+
+                    {phase === "recording" && (
+                      <>
+                        <StatusPill tone="live">Recording</StatusPill>
+                        <span className="font-metric text-xs text-foreground">{formatClock(answerRemaining)} left</span>
+                        <button type="button" className="btn-secondary text-xs" onClick={() => stopRecording(false)}>
+                          Done answering
+                        </button>
+                      </>
+                    )}
+
+                    {phase === "saving_turn" && <StatusLine text="Transcribing and saving your answer..." />}
+                  </div>
+
+                  {phase === "recording" && vadStatus === "active" && (
+                    <p className="mt-3 font-body text-xs text-muted-foreground">
+                      Speaking detected · Auto-stop on silence is on.
+                    </p>
+                  )}
+                </div>
+              )}
+            </Card>
+
+            {answered.length > 0 && (
+              <Card>
+                <h2 className="font-headline text-base font-semibold text-foreground">Turn History</h2>
+                <ol className="mt-3 space-y-3">
+                  {answered.map((turn, index) => (
+                    <li key={turn.turnNumber ?? index} className="rounded-2xl border border-border bg-background p-3 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-body font-medium text-muted-foreground">
+                          {STAGE_LABELS[turn.stage]}
+                          {turn.isFollowUp ? " · follow-up" : ""}
+                        </span>
+                        <span className="font-metric text-muted-foreground">
+                          {formatClock(turn.answerDurationSeconds)}
+                        </span>
+                      </div>
+                      <p className="mt-1 font-body font-medium text-foreground">{turn.questionText}</p>
+                      <p className="mt-1 font-body text-muted-foreground">{turn.transcript}</p>
+                      {turn.candidateCode && (
+                        <div className="mt-2 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 p-2">
+                          <span className="font-mono text-[10px] text-zinc-400 uppercase">{turn.codeLanguage} code:</span>
+                          <pre className="mt-1 max-h-32 overflow-y-auto font-mono text-[11px] text-zinc-300">
+                            {turn.candidateCode}
+                          </pre>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </Card>
+            )}
           </div>
-        )}
-      </Card>
 
-      {answered.length > 0 && (
-        <Card>
-          <h2 className="font-headline text-lg font-semibold text-foreground">So far this interview</h2>
-          <ol className="mt-4 space-y-3">
-            {answered.map((turn, index) => (
-              <li key={turn.turnNumber ?? index} className="rounded-2xl border border-border bg-background p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-body text-xs font-medium text-muted-foreground">
-                    {STAGE_LABELS[turn.stage]}
-                    {turn.isFollowUp ? " · follow-up" : ""}
-                  </span>
-                  <span className="font-metric text-xs text-muted-foreground">
-                    {formatClock(turn.answerDurationSeconds)}
+          {/* Right Column: Code Sandbox */}
+          <div className="lg:col-span-7 h-[700px] sticky top-4">
+            <CodingSandbox
+              initialLanguage={codeLanguage}
+              onCodeChange={handleCodeChange}
+            />
+          </div>
+        </div>
+      ) : layoutMode === "code" ? (
+        <div className="space-y-4">
+          {/* Compact current question banner in code-focused view */}
+          {currentTurn && (
+            <Card className="flex flex-wrap items-center justify-between gap-4 p-4">
+              <div className="flex-1">
+                <span className="font-body text-xs font-semibold uppercase text-primary">
+                  Question {answered.length + 1} ({STAGE_LABELS[currentTurn.stage ?? "intro"]}):
+                </span>
+                <p className="font-body text-sm font-medium text-foreground mt-0.5">{currentTurn.question_text}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                {phase === "awaiting_recording" && (
+                  <button type="button" className="btn-primary py-2 text-xs" onClick={startRecording}>
+                    Start recording
+                  </button>
+                )}
+                {phase === "recording" && (
+                  <>
+                    <StatusPill tone="live">Recording</StatusPill>
+                    <button type="button" className="btn-secondary py-1.5 text-xs" onClick={() => stopRecording(false)}>
+                      Done ({formatClock(answerRemaining)})
+                    </button>
+                  </>
+                )}
+                {phase === "saving_turn" && <StatusLine text="Saving..." />}
+              </div>
+            </Card>
+          )}
+
+          <div className="h-[720px]">
+            <CodingSandbox
+              initialLanguage={codeLanguage}
+              onCodeChange={handleCodeChange}
+            />
+          </div>
+        </div>
+      ) : (
+        /* Voice-only view */
+        <div className="space-y-6">
+          <Card>
+            {phase === "starting" && <StatusLine text="Starting your interview..." />}
+            {phase === "thinking" && <StatusLine text="Preparing the next question..." pulse />}
+            {phase === "finishing" && <StatusLine text="Wrapping up and generating your report..." pulse />}
+
+            {currentTurn && (phase === "awaiting_recording" || phase === "recording" || phase === "requesting_mic" || phase === "saving_turn") && (
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <StatusPill>{STAGE_LABELS[currentTurn.stage ?? "intro"]}</StatusPill>
+                  <span className="font-body text-xs text-muted-foreground">
+                    Question {answered.length + 1}
+                    {currentTurn.is_follow_up ? " · follow-up" : ""}
                   </span>
                 </div>
-                <p className="mt-2 font-body text-sm font-medium text-foreground">{turn.questionText}</p>
-                <p className="mt-1 font-body text-sm text-muted-foreground">{turn.transcript}</p>
-              </li>
-            ))}
-          </ol>
-        </Card>
+
+                <p className="mt-4 font-body text-lg leading-body text-foreground">{currentTurn.question_text}</p>
+
+                <div className="mt-6 flex flex-wrap items-center gap-4">
+                  {phase === "awaiting_recording" && (
+                    <button type="button" className="btn-primary" onClick={startRecording}>
+                      Start recording my answer
+                    </button>
+                  )}
+
+                  {phase === "requesting_mic" && <StatusLine text="Requesting microphone access..." />}
+
+                  {phase === "recording" && (
+                    <>
+                      <StatusPill tone="live">Recording</StatusPill>
+                      <span className="font-metric text-sm text-foreground">{formatClock(answerRemaining)} left to answer</span>
+                      <button type="button" className="btn-secondary" onClick={() => stopRecording(false)}>
+                        Done answering
+                      </button>
+                      {vadStatus === "active" && (
+                        <span className="font-body text-xs text-muted-foreground">
+                          Auto-stop on silence is on — or tap Done.
+                        </span>
+                      )}
+                      {vadStatus === "loading" && (
+                        <span className="font-body text-xs text-muted-foreground">Loading auto-stop detection...</span>
+                      )}
+                      {vadStatus === "unavailable" && (
+                        <span className="font-body text-xs text-muted-foreground">
+                          Auto-stop detection unavailable here — tap Done when you&apos;re finished.
+                        </span>
+                      )}
+                    </>
+                  )}
+
+                  {phase === "saving_turn" && <StatusLine text="Transcribing and saving your answer..." />}
+                </div>
+
+                {/* Quick toggle to launch Code Sandbox */}
+                <div className="mt-6 border-t border-border pt-4 flex items-center justify-between">
+                  <span className="font-body text-xs text-muted-foreground">
+                    Writing code or SQL query for this question?
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLayoutMode("split")}
+                    className="font-body text-xs font-semibold text-primary underline"
+                  >
+                    Open Live Code Editor ↗
+                  </button>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {answered.length > 0 && (
+            <Card>
+              <h2 className="font-headline text-lg font-semibold text-foreground">So far this interview</h2>
+              <ol className="mt-4 space-y-3">
+                {answered.map((turn, index) => (
+                  <li key={turn.turnNumber ?? index} className="rounded-2xl border border-border bg-background p-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-body text-xs font-medium text-muted-foreground">
+                        {STAGE_LABELS[turn.stage]}
+                        {turn.isFollowUp ? " · follow-up" : ""}
+                      </span>
+                      <span className="font-metric text-xs text-muted-foreground">
+                        {formatClock(turn.answerDurationSeconds)}
+                      </span>
+                    </div>
+                    <p className="mt-2 font-body text-sm font-medium text-foreground">{turn.questionText}</p>
+                    <p className="mt-1 font-body text-sm text-muted-foreground">{turn.transcript}</p>
+                    {turn.candidateCode && (
+                      <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 p-3">
+                        <span className="font-mono text-xs text-zinc-400 uppercase">{turn.codeLanguage} code:</span>
+                        <pre className="mt-1 max-h-40 overflow-y-auto font-mono text-xs text-zinc-200">
+                          {turn.candidateCode}
+                        </pre>
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ol>
+            </Card>
+          )}
+        </div>
       )}
 
-      <div className="text-center">
+      <div className="text-center pt-2">
         <button type="button" onClick={handleEndInterviewNow} className="font-body text-sm text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
           End interview now
         </button>
