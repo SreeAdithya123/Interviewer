@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { getCurrentProfile, profileNeedsOnboarding } from "@/lib/auth/current-profile";
-import InvitationTokenForm from "@/components/auth/InvitationTokenForm";
+import OnboardingFlow from "@/components/auth/OnboardingFlow";
 
 export const metadata: Metadata = {
-  title: "Finish setting up your account",
+  title: "Get Started — Finish Setting Up Your Account",
 };
 
 export default async function OnboardingPage() {
@@ -20,26 +20,20 @@ export default async function OnboardingPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background px-5 py-16">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="text-2xl font-semibold text-foreground">One more step</h1>
-          <p className="mt-2 font-body text-sm text-muted-foreground">
-            Enter the invitation code your college shared with you to finish setting up your
-            account.
-          </p>
-        </div>
-
-        {/* useSearchParams() inside InvitationTokenForm requires a Suspense
-            boundary per Next.js's app-router rules. */}
-        <Suspense fallback={<div className="h-56 animate-pulse rounded-3xl bg-muted" />}>
-          <InvitationTokenForm />
-        </Suspense>
-
-        <p className="mt-6 text-center font-body text-xs text-muted-foreground">
-          Signed in as {profile.email}.
+    <main className="flex min-h-screen flex-col items-center justify-center bg-background px-4 py-12 sm:px-6">
+      <div className="mb-6 text-center">
+        <h1 className="font-headline text-3xl font-extrabold tracking-tight text-foreground sm:text-4xl">
+          Welcome to Vyoman
+        </h1>
+        <p className="mt-2 font-body text-sm text-muted-foreground">
+          Prepare for your dream tech placements with AI-driven mock interviews and coding.
         </p>
       </div>
+
+      {/* useSearchParams() inside OnboardingFlow requires a Suspense boundary */}
+      <Suspense fallback={<div className="h-96 w-full max-w-lg animate-pulse rounded-3xl bg-muted" />}>
+        <OnboardingFlow userEmail={profile.email} initialFullName={profile.full_name} />
+      </Suspense>
     </main>
   );
 }

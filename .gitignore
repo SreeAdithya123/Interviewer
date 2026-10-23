@@ -31,6 +31,7 @@ coverage/
 # Cloudflare / OpenNext
 .wrangler/
 .open-next/
+.vite/
 
 # Supabase CLI
 supabase/.temp/

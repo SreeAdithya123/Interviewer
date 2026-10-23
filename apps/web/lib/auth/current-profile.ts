@@ -60,7 +60,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
 
 /**
  * True when a profile still needs to go through /onboarding before using
- * the app: a student with no college yet. A college_admin or
+ * the app: any student whose onboarded_at is null. A college_admin or
  * platform_admin is never sent to onboarding — a platform_admin has no
  * college at all, by design, and a college_admin is provisioned with one
  * directly (not via the self-serve invitation-token flow).
@@ -69,7 +69,7 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
  * app/app/layout.tsx (route guard) so the two checks can't drift.
  */
 export function profileNeedsOnboarding(
-  profile: Pick<Profile, "role" | "college_id"> | null,
+  profile: Pick<Profile, "role" | "college_id" | "onboarded_at"> | null,
 ): boolean {
-  return profile !== null && profile.role === "student" && profile.college_id === null;
+  return profile !== null && profile.role === "student" && profile.onboarded_at === null;
 }
