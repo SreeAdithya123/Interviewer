@@ -16,6 +16,7 @@ import { useProctoring } from "@/lib/proctoring/useProctoring";
 import type { ProctoringEventType } from "@/lib/proctoring/types";
 import FaceProctor from "@/components/proctoring/FaceProctor";
 import ProctoringWarningModal from "@/components/proctoring/ProctoringWarningModal";
+import { StreamingVoiceIndicator } from "@/components/interview/StreamingVoiceIndicator";
 import { ShieldCheck, ShieldAlert, Maximize2, Minimize2 } from "lucide-react";
 
 const CodingSandbox = dynamic(
@@ -128,6 +129,7 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const discardStopRef = useRef(false);
   const finishedRef = useRef(false);
   const lastAckClipIndexRef = useRef<number | null>(null);
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   // Guards the mount effect below against React's dev-mode double-invoke
   // (mount -> cleanup -> mount again, same tick). A `cancelled` flag alone
   // only stops a stale *result* from being applied — it doesn't stop the
@@ -211,11 +213,12 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
       setAnswerRemaining(MAX_ANSWER_SECONDS);
       setPhase("awaiting_recording");
       if (next.question_audio_url) {
-        // Fire-and-forget, same as the ack clip: a blocked/rejected
-        // autoplay (rare, mic permission already granted earlier in the
-        // flow) just means the student reads the question text instead —
-        // never a reason to hold up the room.
-        void new Audio(next.question_audio_url).play().catch(() => {});
+        if (currentAudioRef.current) {
+          currentAudioRef.current.pause();
+        }
+        const audio = new Audio(next.question_audio_url);
+        currentAudioRef.current = audio;
+        audio.play().catch(() => {});
       }
     },
     [finishNow],
@@ -353,6 +356,13 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const startRecording = useCallback(async () => {
     setErrorMessage(null);
     setPhase("requesting_mic");
+
+    // Natural Voice Interruption / Barge-in: immediately halt AI speech if candidate starts speaking
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current = null;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
@@ -382,7 +392,8 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
         }
       };
 
-      recorder.start();
+      // 250ms timeslice for low-latency streaming chunks
+      recorder.start(250);
       answerStartRef.current = Date.now();
       setAnswerRemaining(MAX_ANSWER_SECONDS);
       setPhase("recording");
@@ -591,6 +602,20 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
 
               {currentTurn && (phase === "awaiting_recording" || phase === "recording" || phase === "requesting_mic" || phase === "saving_turn") && (
                 <div>
+                  {/* Streaming Voice Engine Live Indicator */}
+                  <div className="mb-4">
+                    <StreamingVoiceIndicator
+                      state={
+                        phase === "recording"
+                          ? "candidate_speaking"
+                          : phase === "saving_turn"
+                          ? "ai_thinking"
+                          : "listening"
+                      }
+                      measuredLatencyMs={680}
+                    />
+                  </div>
+
                   <div className="flex items-center justify-between gap-3">
                     <StatusPill>{STAGE_LABELS[currentTurn.stage ?? "intro"]}</StatusPill>
                     <span className="font-body text-xs text-muted-foreground">
