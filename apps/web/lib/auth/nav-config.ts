@@ -31,6 +31,7 @@ const COLLEGE_ADMIN_NAV: NavItem[] = [
   ...STUDENT_NAV,
   { label: "Students", href: "/app/students" },
   { label: "Invites", href: "/app/invites" },
+  { label: "ATS Sync", href: "/app/ats" },
 ];
 
 const PLATFORM_ADMIN_NAV: NavItem[] = [

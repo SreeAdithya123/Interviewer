@@ -1,9 +1,10 @@
 import type { ExecutionResult, SupportedLanguage, TestCase } from "./types";
+import { executeSqlQuery, formatSqlResultMarkdown } from "./sql";
 
 /**
  * Sandboxed Code Execution Engine.
- * Supports client-side JavaScript execution with timeout protection and
- * server-side multi-language execution (Python, Java, C++, SQL).
+ * Supports client-side JavaScript execution with timeout protection,
+ * in-memory SQL relational evaluation, and server-side multi-language execution (Python, Java, C++).
  */
 
 export async function executeCode(
@@ -12,6 +13,28 @@ export async function executeCode(
   testCases: TestCase[] = [],
 ): Promise<ExecutionResult> {
   const startTime = performance.now();
+
+  // If language is SQL, execute against the recruitment relational schema
+  if (language === "sql") {
+    const sqlResult = executeSqlQuery(code);
+    const evaluatedTestCases = testCases.map((tc) => {
+      const passed = sqlResult.success && sqlResult.rowCount > 0;
+      return {
+        ...tc,
+        passed,
+        actualOutput: sqlResult.success ? `(${sqlResult.rowCount} rows returned)` : sqlResult.error,
+        executionTimeMs: sqlResult.executionTimeMs,
+      };
+    });
+
+    return {
+      success: sqlResult.success,
+      output: formatSqlResultMarkdown(sqlResult),
+      error: sqlResult.error,
+      executionTimeMs: sqlResult.executionTimeMs,
+      testCases: evaluatedTestCases.length > 0 ? evaluatedTestCases : undefined,
+    };
+  }
 
   // If in browser and language is JS/TS, execute client-side directly for sub-5ms latency
   // and full browser V8 sandbox support (bypassing edge worker string-eval limits)
