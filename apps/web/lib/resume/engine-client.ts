@@ -6,6 +6,7 @@
  */
 
 const ENGINE_BASE_URL = process.env.ENGINE_BASE_URL || "http://localhost:8000";
+const ENGINE_API_SECRET = process.env.ENGINE_API_SECRET || "";
 
 export class EngineError extends Error {
   constructor(
@@ -18,7 +19,14 @@ export class EngineError extends Error {
 }
 
 async function engineFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${ENGINE_BASE_URL}${path}`, init);
+  const headers = new Headers(init?.headers);
+  if (ENGINE_API_SECRET && !headers.has("x-engine-secret") && !headers.has("authorization")) {
+    headers.set("x-engine-secret", ENGINE_API_SECRET);
+  }
+  const response = await fetch(`${ENGINE_BASE_URL}${path}`, {
+    ...init,
+    headers,
+  });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new EngineError(

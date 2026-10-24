@@ -248,12 +248,21 @@ export async function finishInterview(
     await engineFinishInterview(interviewId, aggregates);
   } catch {
     const supabase = await createClient();
+    const eyeContact =
+      typeof aggregates?.eyeContactPct === "number"
+        ? Math.min(100, Math.max(0, Math.round(aggregates.eyeContactPct)))
+        : 85;
+    const postureStability =
+      typeof aggregates?.postureStabilityPct === "number"
+        ? Math.min(100, Math.max(0, Math.round(aggregates.postureStabilityPct)))
+        : 90;
+
     try {
       await supabase.rpc("finish_stub_interview", {
         p_interview_id: interviewId,
         p_duration_seconds: 600,
-        p_eye_contact_pct: 85,
-        p_posture_stability_pct: 90,
+        p_eye_contact_pct: eyeContact,
+        p_posture_stability_pct: postureStability,
         p_scores: {
           clarity: 85,
           relevance: 90,

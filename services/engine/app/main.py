@@ -14,10 +14,15 @@ interview/turn is in a sane state for the requested action (translated into
 from __future__ import annotations
 
 from dataclasses import asdict
+import hmac
+import os
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from app.chat import engine as chat_engine
 from app.internal.manual_test_harness import router as internal_test_interview_router
@@ -28,6 +33,51 @@ from app.providers.redis_client import check_rate_limit
 from app.resume import engine as resume_engine
 
 app = FastAPI(title="Vyoman Interviewer Engine")
+
+
+class EngineAuthMiddleware(BaseHTTPMiddleware):
+    """Enforces shared-secret API authentication on incoming engine requests.
+
+    When ENGINE_API_SECRET is set in the environment (e.g. in Cloud Run production),
+    all non-public routes require a matching 'Authorization: Bearer <secret>' or
+    'X-Engine-Secret: <secret>' header. Health checks and docs remain exempt.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        # Exclude liveness/readiness probes and API docs
+        if request.url.path in (
+            "/health",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+            "/internal/test-interview",
+        ):
+            return await call_next(request)
+
+        secret = os.environ.get("ENGINE_API_SECRET", "").strip()
+        if not secret:
+            # Pass-through when no secret configured (local dev/offline testing)
+            return await call_next(request)
+
+        auth_header = request.headers.get("authorization", "")
+        x_secret = request.headers.get("x-engine-secret", "")
+
+        token = ""
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+        elif x_secret:
+            token = x_secret.strip()
+
+        if not token or not hmac.compare_digest(token, secret):
+            return JSONResponse(
+                status_code=401,
+                content={"error": "Unauthorized: valid engine secret required."},
+            )
+
+        return await call_next(request)
+
+
+app.add_middleware(EngineAuthMiddleware)
 
 app.include_router(internal_test_interview_router)
 
