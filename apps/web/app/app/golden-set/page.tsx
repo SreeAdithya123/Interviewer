@@ -37,40 +37,54 @@ export default async function GoldenSetPage() {
   const rated = rows.filter((r) => ratedIds.has(r.id));
 
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold text-foreground">Golden set</h1>
-      <p className="mt-1 font-body text-sm text-muted-foreground">
-        Score a sampled interview blind, on the same five-dimension rubric the AI evaluation uses
-        (docs/BUILD_SPEC.md Part 4.8). Your score is saved before the AI&apos;s is shown, so it stays
-        blind.
-      </p>
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div>
+        <h1 className="font-headline text-2xl font-semibold tracking-tight text-foreground">
+          Golden Set Calibration
+        </h1>
+        <p className="mt-1 font-body text-sm text-muted-foreground">
+          Blind evaluator scoring across the five standard placement rubrics. Human scores are persisted prior to revealing AI evaluation outputs.
+        </p>
+      </div>
 
       {rows.length === 0 ? (
-        <p className="mt-6 rounded-2xl bg-accent/10 px-4 py-3 font-body text-sm text-foreground">
-          No completed interviews yet — this fills in once Phase 1 interviews start running.
-        </p>
+        <div className="rounded-lg border border-dashed border-border/80 bg-card p-10 text-center font-body text-xs text-muted-foreground">
+          No completed interviews recorded in this sample window.
+        </div>
       ) : (
-        <>
-          <h2 className="mt-6 font-headline text-lg text-foreground">Awaiting a rating ({unrated.length})</h2>
-          <div className="mt-3 divide-y divide-border rounded-3xl border border-border bg-card">
-            {unrated.length === 0 ? (
-              <p className="p-6 font-body text-sm text-muted-foreground">
-                Every sampled completed interview already has a rating.
-              </p>
-            ) : (
-              unrated.map((interview) => <InterviewRowItem key={interview.id} interview={interview} rated={false} />)
-            )}
-          </div>
+        <div className="space-y-6">
+          <section className="space-y-2.5">
+            <h2 className="font-body text-sm font-semibold text-foreground">
+              Awaiting blind human evaluation ({unrated.length})
+            </h2>
+            <div className="overflow-x-auto rounded-lg border border-border/80 bg-card divide-y divide-border/60">
+              {unrated.length === 0 ? (
+                <p className="p-5 font-body text-xs text-muted-foreground">
+                  All sampled completed interviews have been rated.
+                </p>
+              ) : (
+                unrated.map((interview) => (
+                  <InterviewRowItem key={interview.id} interview={interview} rated={false} />
+                ))
+              )}
+            </div>
+          </section>
 
-          <h2 className="mt-8 font-headline text-lg text-foreground">Already rated ({rated.length})</h2>
-          <div className="mt-3 divide-y divide-border rounded-3xl border border-border bg-card">
-            {rated.length === 0 ? (
-              <p className="p-6 font-body text-sm text-muted-foreground">None yet.</p>
-            ) : (
-              rated.map((interview) => <InterviewRowItem key={interview.id} interview={interview} rated />)
-            )}
-          </div>
-        </>
+          <section className="space-y-2.5">
+            <h2 className="font-body text-sm font-semibold text-foreground">
+              Rated benchmark calibration records ({rated.length})
+            </h2>
+            <div className="overflow-x-auto rounded-lg border border-border/80 bg-card divide-y divide-border/60">
+              {rated.length === 0 ? (
+                <p className="p-5 font-body text-xs text-muted-foreground">No completed evaluations yet.</p>
+              ) : (
+                rated.map((interview) => (
+                  <InterviewRowItem key={interview.id} interview={interview} rated />
+                ))
+              )}
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
@@ -84,22 +98,29 @@ function InterviewRowItem({
   rated: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between px-6 py-4">
+    <div className="flex items-center justify-between p-4 transition-colors hover:bg-muted/30">
       <div>
-        <p className="font-body text-sm text-foreground">
-          {interview.target_role ?? "Unspecified role"} ·{" "}
-          <span className="capitalize text-muted-foreground">{interview.interview_type}</span> ·{" "}
-          <span className="capitalize text-muted-foreground">{interview.difficulty}</span>
+        <p className="font-body text-xs font-medium text-foreground capitalize">
+          {interview.target_role ?? "General practice"} ·{" "}
+          <span className="text-muted-foreground">{interview.interview_type}</span> ·{" "}
+          <span className="text-muted-foreground">{interview.difficulty}</span>
         </p>
-        <p className="font-body text-xs text-muted-foreground">
-          {interview.ended_at ? new Date(interview.ended_at).toLocaleString("en-IN") : "—"}
+        <p className="font-body text-[11px] text-muted-foreground">
+          {interview.ended_at
+            ? new Date(interview.ended_at).toLocaleString("en-IN", {
+                month: "short",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "—"}
         </p>
       </div>
       <Link
         href={`/app/golden-set/${interview.id}`}
-        className={rated ? "font-body text-sm text-muted-foreground hover:underline" : "font-body text-sm font-medium text-primary hover:underline"}
+        className="font-body text-xs font-medium text-foreground underline-offset-4 hover:underline"
       >
-        {rated ? "View rating" : "Rate blind →"}
+        {rated ? "Review rating →" : "Rate blind →"}
       </Link>
     </div>
   );

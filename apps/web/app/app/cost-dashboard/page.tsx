@@ -17,7 +17,10 @@ function percentile(sortedAscending: number[], p: number): number {
 }
 
 function formatRupees(paise: number): string {
-  return `₹${(paise / 100).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+  return `₹${(paise / 100).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export default async function CostDashboardPage() {
@@ -25,10 +28,6 @@ export default async function CostDashboardPage() {
 
   const supabase = await createClient();
 
-  // RLS lets platform_admin select every usage_events row; this is a pure
-  // system ledger with no client-side writes (see
-  // supabase/migrations/20261015120007_row_level_security.sql), so this
-  // dashboard only ever reads it.
   const [{ data: events, error: eventsError }, { data: colleges }, { data: turns }] = await Promise.all([
     supabase
       .from("usage_events")
@@ -36,9 +35,6 @@ export default async function CostDashboardPage() {
       .order("created_at", { ascending: false })
       .limit(10000),
     supabase.from("colleges").select("id, name"),
-    // stt_fallback_used/stt_provider live on interview_turns, not
-    // usage_events (which has no dedicated success/error column yet) — see
-    // the "Provider reliability" note below.
     supabase
       .from("interview_turns")
       .select("stt_provider, stt_fallback_used")
@@ -58,8 +54,7 @@ export default async function CostDashboardPage() {
 
   const totalCostPaise = rows.reduce((sum, r) => sum + r.cost_paise, 0);
 
-  // Cost per interview (p50/p95): sum every event's cost grouped by
-  // interview_id, then take percentiles over those per-interview totals.
+  // Cost per interview (p50/p95)
   const costByInterview = new Map<string, number>();
   for (const r of rows) {
     if (!r.interview_id) continue;
@@ -67,20 +62,20 @@ export default async function CostDashboardPage() {
   }
   const interviewCosts = [...costByInterview.values()].sort((a, b) => a - b);
 
-  // Cost per college.
+  // Cost per college
   const costByCollege = new Map<string, number>();
   for (const r of rows) {
     const key = r.college_id ?? "unattributed";
     costByCollege.set(key, (costByCollege.get(key) ?? 0) + r.cost_paise);
   }
 
-  // Cost per feature.
+  // Cost per feature
   const costByFeature = new Map<string, number>();
   for (const r of rows) {
     costByFeature.set(r.feature, (costByFeature.get(r.feature) ?? 0) + r.cost_paise);
   }
 
-  // Daily spend (last 14 days present in the sample).
+  // Daily spend
   const costByDay = new Map<string, number>();
   for (const r of rows) {
     const day = r.created_at.slice(0, 10);
@@ -95,112 +90,118 @@ export default async function CostDashboardPage() {
   const isEmpty = rows.length === 0;
 
   return (
-    <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold text-foreground">Cost dashboard</h1>
-      <p className="mt-1 font-body text-sm text-muted-foreground">
-        Every provider call (STT, TTS, LLM, embeddings, OCR) writes one usage_events row
-        (docs/BUILD_SPEC.md Part 5) — this reads that ledger directly, no mock numbers.
-      </p>
-
-      {isEmpty && (
-        <p className="mt-4 rounded-2xl bg-accent/10 px-4 py-3 font-body text-sm text-foreground">
-          No usage_events yet — this fills in once Phase 1 (real interviews, resume scans and chat
-          calling real providers) starts running.
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div>
+        <h1 className="font-headline text-2xl font-semibold tracking-tight text-foreground">
+          Cost Dashboard
+        </h1>
+        <p className="mt-1 font-body text-sm text-muted-foreground">
+          Infrastructure ledger · Direct API spend recorded per provider call across Groq, Sarvam, Gemini, and Redis.
         </p>
-      )}
-
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
-        <StatCard label="Total spend (sampled)" value={formatRupees(totalCostPaise)} />
-        <StatCard label="Cost / interview — p50" value={formatRupees(percentile(interviewCosts, 50))} />
-        <StatCard label="Cost / interview — p95" value={formatRupees(percentile(interviewCosts, 95))} />
       </div>
 
-      <section className="mt-6 grid gap-6 sm:grid-cols-2">
-        <Panel title="Cost by college">
-          {costByCollege.size === 0 ? (
-            <EmptyRow />
+      {isEmpty && (
+        <div className="rounded-md border border-border/80 bg-muted/30 px-4 py-3 font-body text-xs text-muted-foreground">
+          No usage events recorded in this sample window. Provider calls will populate live as mock sessions run.
+        </div>
+      )}
+
+      {/* KPI Strip */}
+      <div className="grid grid-cols-1 divide-y border border-border/80 bg-card rounded-lg sm:grid-cols-3 sm:divide-y-0 sm:divide-x">
+        <div className="p-4 sm:p-5">
+          <p className="font-body text-xs font-medium text-muted-foreground">Total sampled spend</p>
+          <p className="mt-2 font-metric text-2xl font-semibold tracking-tight text-foreground tabular-nums sm:text-3xl">
+            {formatRupees(totalCostPaise)}
+          </p>
+          <p className="mt-1 font-body text-[11px] text-muted-foreground">{rows.length} total provider events</p>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          <p className="font-body text-xs font-medium text-muted-foreground">Cost / interview — p50</p>
+          <p className="mt-2 font-metric text-2xl font-semibold tracking-tight text-foreground tabular-nums sm:text-3xl">
+            {formatRupees(percentile(interviewCosts, 50))}
+          </p>
+          <p className="mt-1 font-body text-[11px] text-muted-foreground">median session cost</p>
+        </div>
+
+        <div className="p-4 sm:p-5">
+          <p className="font-body text-xs font-medium text-muted-foreground">Cost / interview — p95</p>
+          <p className="mt-2 font-metric text-2xl font-semibold tracking-tight text-foreground tabular-nums sm:text-3xl">
+            {formatRupees(percentile(interviewCosts, 95))}
+          </p>
+          <p className="mt-1 font-body text-[11px] text-muted-foreground">95th percentile session cost</p>
+        </div>
+      </div>
+
+      {/* College and Feature Breakdown */}
+      <div className="grid gap-6 sm:grid-cols-2">
+        <div className="rounded-lg border border-border/80 bg-card p-5">
+          <h2 className="font-body text-sm font-semibold text-foreground">Spend by college</h2>
+          <p className="font-body text-[11px] text-muted-foreground">COGS allocated per campus domain</p>
+          <div className="mt-3">
+            {costByCollege.size === 0 ? (
+              <p className="py-4 text-center font-body text-xs text-muted-foreground">No events recorded.</p>
+            ) : (
+              <Table
+                rows={[...costByCollege.entries()].sort((a, b) => b[1] - a[1])}
+                renderKey={(key) => (key === "unattributed" ? "Unattributed / Direct" : collegeNames.get(key) ?? key)}
+                renderValue={formatRupees}
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-border/80 bg-card p-5">
+          <h2 className="font-body text-sm font-semibold text-foreground">Spend by platform feature</h2>
+          <p className="font-body text-[11px] text-muted-foreground">Audio STT, TTS, evaluation, and resume scanning</p>
+          <div className="mt-3">
+            {costByFeature.size === 0 ? (
+              <p className="py-4 text-center font-body text-xs text-muted-foreground">No events recorded.</p>
+            ) : (
+              <Table
+                rows={[...costByFeature.entries()].sort((a, b) => b[1] - a[1])}
+                renderKey={(key) => key.replace(/_/g, " ")}
+                renderValue={formatRupees}
+              />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Daily Spend Timeline */}
+      <div className="rounded-lg border border-border/80 bg-card p-5">
+        <h2 className="font-body text-sm font-semibold text-foreground">Daily spend ledger</h2>
+        <p className="font-body text-[11px] text-muted-foreground">Aggregated COGS over recent calendar days</p>
+        <div className="mt-3">
+          {dailySorted.length === 0 ? (
+            <p className="py-4 text-center font-body text-xs text-muted-foreground">No daily ledger entries.</p>
           ) : (
-            <Table
-              rows={[...costByCollege.entries()].sort((a, b) => b[1] - a[1])}
-              renderKey={(key) => (key === "unattributed" ? "Unattributed" : collegeNames.get(key) ?? key)}
-              renderValue={formatRupees}
-            />
+            <Table rows={dailySorted} renderKey={(key) => key} renderValue={formatRupees} />
           )}
-        </Panel>
+        </div>
+      </div>
 
-        <Panel title="Cost by feature">
-          {costByFeature.size === 0 ? (
-            <EmptyRow />
-          ) : (
-            <Table
-              rows={[...costByFeature.entries()].sort((a, b) => b[1] - a[1])}
-              renderKey={(key) => key.replace(/_/g, " ")}
-              renderValue={formatRupees}
-            />
-          )}
-        </Panel>
-      </section>
-
-      <Panel title="Daily spend (most recent days in the sample)" className="mt-6">
-        {dailySorted.length === 0 ? (
-          <EmptyRow />
-        ) : (
-          <Table rows={dailySorted} renderKey={(key) => key} renderValue={formatRupees} />
-        )}
-      </Panel>
-
-      <Panel title="Provider reliability — STT fallback rate" className="mt-6">
-        <p className="font-body text-xs text-muted-foreground">
-          usage_events has no dedicated success/error column yet, so provider error rate isn&apos;t
-          computable from it today; that needs a units.ok / error flag the engine should start
-          writing once Phase 1 lands. STT fallback rate is computable now, from
-          interview_turns.stt_fallback_used.
+      {/* Provider Reliability */}
+      <div className="rounded-lg border border-border/80 bg-card p-5">
+        <h2 className="font-body text-sm font-semibold text-foreground">Provider reliability — STT fallback</h2>
+        <p className="mt-1 font-body text-xs text-muted-foreground">
+          Voice pipeline resilience telemetry computed from interview turns fallback flags (Groq Whisper primary vs Sarvam Saaras fallback).
         </p>
         {sttAttempts.length === 0 ? (
-          <div className="mt-3">
-            <EmptyRow />
-          </div>
+          <p className="mt-3 font-body text-xs text-muted-foreground">No voice turns recorded yet.</p>
         ) : (
-          <p className="mt-3 font-metric text-2xl text-foreground">
-            {((sttFallbacks.length / sttAttempts.length) * 100).toFixed(1)}%
-            <span className="ml-2 font-body text-sm text-muted-foreground">
-              ({sttFallbacks.length} of {sttAttempts.length} turns fell back to Sarvam)
+          <div className="mt-3 flex items-baseline gap-2">
+            <span className="font-metric text-2xl font-semibold text-foreground tabular-nums">
+              {((sttFallbacks.length / sttAttempts.length) * 100).toFixed(1)}%
             </span>
-          </p>
+            <span className="font-body text-xs text-muted-foreground">
+              fallback rate ({sttFallbacks.length} of {sttAttempts.length} turns transferred to secondary STT)
+            </span>
+          </div>
         )}
-      </Panel>
+      </div>
     </div>
   );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-3xl border border-border bg-card p-5">
-      <p className="font-body text-xs uppercase tracking-label text-muted-foreground">{label}</p>
-      <p className="mt-2 font-metric text-2xl text-foreground">{value}</p>
-    </div>
-  );
-}
-
-function Panel({
-  title,
-  className,
-  children,
-}: {
-  title: string;
-  className?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className={`rounded-3xl border border-border bg-card p-5 ${className ?? ""}`}>
-      <h2 className="font-headline text-base text-foreground">{title}</h2>
-      <div className="mt-3">{children}</div>
-    </div>
-  );
-}
-
-function EmptyRow() {
-  return <p className="font-body text-sm text-muted-foreground">No data yet.</p>;
 }
 
 function Table({
@@ -213,12 +214,14 @@ function Table({
   renderValue: (value: number) => string;
 }) {
   return (
-    <table className="w-full text-left font-body text-sm">
+    <table className="w-full text-left font-body text-xs">
       <tbody>
         {rows.map(([key, value]) => (
-          <tr key={key} className="border-b border-border last:border-0">
-            <td className="py-2 capitalize text-muted-foreground">{renderKey(key)}</td>
-            <td className="py-2 text-right font-metric text-foreground">{renderValue(value)}</td>
+          <tr key={key} className="border-b border-border/60 last:border-0">
+            <td className="py-2 capitalize text-foreground">{renderKey(key)}</td>
+            <td className="py-2 text-right font-metric font-medium text-foreground tabular-nums">
+              {renderValue(value)}
+            </td>
           </tr>
         ))}
       </tbody>

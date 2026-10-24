@@ -107,20 +107,21 @@ export function InterviewReportClient({
   }, [isPending, router]);
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6">
+      {/* Breadcrumb & Title */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <Link href="/app/history" className="font-body text-sm text-muted-foreground hover:text-foreground">
+          <Link href="/app/history" className="font-body text-xs text-muted-foreground hover:text-foreground">
             &larr; Back to history
           </Link>
-          <h1 className="mt-2 font-headline text-2xl font-semibold tracking-tight text-foreground">
-            {INTERVIEW_TYPE_LABELS[interview.interview_type]} interview report
+          <h1 className="mt-1 font-headline text-2xl font-semibold tracking-tight text-foreground">
+            {INTERVIEW_TYPE_LABELS[interview.interview_type]} Interview Report
             {interview.target_role ? ` · ${interview.target_role}` : ""}
           </h1>
-          <p className="mt-1 font-body text-sm text-muted-foreground">
+          <p className="mt-0.5 font-body text-xs text-muted-foreground">
             {DIFFICULTY_LABELS[interview.difficulty]} difficulty
             {interview.company_type ? ` · ${interview.company_type}` : ""}
-            {interview.duration_seconds ? ` · ${formatClock(interview.duration_seconds)} total` : ""}
+            {interview.duration_seconds ? ` · ${formatClock(interview.duration_seconds)} duration` : ""}
           </p>
         </div>
         {report?.model_id === "stub-fixture-v1" && <PreviewBadge />}
@@ -128,63 +129,52 @@ export function InterviewReportClient({
 
       {isPending && (
         <Card className="flex items-center gap-3">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="font-body text-sm text-foreground">
-            Evaluating your interview and generating your comprehensive report...
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+          <p className="font-body text-xs text-foreground">
+            Generating multi-rubric evaluation and diagnostic feedback...
           </p>
         </Card>
       )}
 
       {!report && interview.status !== "completed" && (
         <Card>
-          <p className="font-body text-sm text-muted-foreground">
-            This interview hasn&apos;t been completed yet.
+          <p className="font-body text-xs text-muted-foreground">
+            This interview session has not been concluded yet.
           </p>
         </Card>
       )}
 
       {report && report.status === "failed" && (
-        <Card className="space-y-4 border-destructive/30 bg-destructive/5">
+        <Card className="space-y-3 border-rose-200/80 bg-rose-50 dark:border-rose-900/40 dark:bg-rose-950/20">
           <div className="flex items-start gap-3">
-            <div className="rounded-2xl border border-destructive/20 bg-destructive/10 p-2.5 text-destructive">
-              <AlertCircle className="h-5 w-5" />
-            </div>
+            <AlertCircle className="h-4 w-4 text-rose-700 shrink-0 mt-0.5 dark:text-rose-400" />
             <div className="flex-1 space-y-1">
-              <h3 className="font-headline text-base font-semibold text-foreground">
+              <h3 className="font-body text-xs font-semibold text-rose-900 dark:text-rose-300">
                 Report Generation Delayed
               </h3>
-              <p className="font-body text-xs text-muted-foreground">
-                The evaluation model experienced a transient demand spike (HTTP 503) while scoring this session. Your transcript and audio are safely saved.
+              <p className="font-body text-xs text-rose-800 dark:text-rose-400">
+                The evaluation model experienced a transient provider timeout. Your transcript and audio are safely stored.
               </p>
               {report.error_message && (
-                <p className="font-mono text-[11px] text-destructive/80 bg-background/80 border border-destructive/20 p-2.5 rounded-xl break-all">
+                <p className="font-mono text-[11px] text-rose-800 bg-background/80 border border-rose-200 p-2 rounded break-all dark:border-rose-900/60 dark:text-rose-300">
                   {report.error_message}
                 </p>
               )}
             </div>
           </div>
 
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-3 pt-1">
             <button
               type="button"
               onClick={handleRetry}
               disabled={retrying}
-              className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 font-body text-xs font-semibold text-primary-foreground shadow-sm transition-all hover:bg-primary-hover disabled:opacity-60"
+              className="inline-flex h-8 items-center gap-2 rounded bg-foreground px-3 font-body text-xs font-medium text-background hover:bg-foreground/90 disabled:opacity-60"
             >
-              {retrying ? (
-                <>
-                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground border-t-transparent" />
-                  <span>Evaluating now...</span>
-                </>
-              ) : (
-                <>
-                  <RotateCw className="h-3.5 w-3.5" />
-                  <span>Retry Evaluation</span>
-                </>
-              )}
+              <RotateCw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
+              <span>{retrying ? "Evaluating now..." : "Retry evaluation"}</span>
             </button>
             {retryError && (
-              <span className="font-body text-xs text-destructive">{retryError}</span>
+              <span className="font-body text-xs text-rose-700">{retryError}</span>
             )}
           </div>
         </Card>
@@ -192,35 +182,42 @@ export function InterviewReportClient({
 
       {report && report.status === "completed" && report.scores && (
         <>
-          <Card className="text-center">
-            <p className="font-body text-xs font-medium uppercase tracking-label text-muted-foreground">
-              Overall score (preview)
+          {/* Overall Score Headline Card */}
+          <Card className="text-center p-6">
+            <p className="font-body text-xs font-medium text-muted-foreground">
+              Overall readiness score
             </p>
-            <p className="mt-2 font-metric text-5xl text-foreground">
-              {report.overall_score !== null ? Math.round(report.overall_score) : "—"}
-              <span className="text-xl text-muted-foreground">/100</span>
-            </p>
+            <div className="mt-1 flex items-baseline justify-center gap-1 font-metric text-4xl font-semibold text-foreground tabular-nums">
+              <span>{report.overall_score !== null ? Math.round(report.overall_score) : "—"}</span>
+              <span className="font-body text-base text-muted-foreground font-normal">/ 100</span>
+            </div>
           </Card>
 
-          <Card>
-            <h2 className="font-headline text-lg font-semibold text-foreground">Scores by dimension</h2>
-            <p className="mt-1 font-body text-xs text-muted-foreground">
-              Evidence quotes below come from this interview&apos;s preview transcripts, not a real evaluation model.
-            </p>
-            <div className="mt-4 space-y-4">
+          {/* Scores by Dimension */}
+          <Card className="space-y-4">
+            <div>
+              <h2 className="font-body text-sm font-semibold text-foreground">Performance by dimension</h2>
+              <p className="font-body text-xs text-muted-foreground">
+                Evaluated against placement rubrics with quoted transcript evidence
+              </p>
+            </div>
+
+            <div className="space-y-3">
               {DIMENSION_ORDER.map(({ key, label }) => {
                 const dim = report.scores![key];
                 return (
-                  <div key={key} className="rounded-2xl border border-border bg-background p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="font-body text-sm font-medium text-foreground">{label}</span>
-                      <span className="font-metric text-sm text-foreground">{dim.score}/100</span>
+                  <div key={key} className="rounded border border-border/80 bg-background p-3.5 space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-body text-xs font-medium text-foreground">{label}</span>
+                      <span className="font-metric text-xs font-semibold text-foreground tabular-nums">
+                        {dim.score} / 100
+                      </span>
                     </div>
-                    <p className="mt-1 font-body text-sm text-muted-foreground">{dim.summary}</p>
+                    <p className="font-body text-xs text-muted-foreground leading-relaxed">{dim.summary}</p>
                     {dim.evidence.length > 0 && (
-                      <ul className="mt-2 space-y-1">
+                      <ul className="mt-1 space-y-0.5 border-t border-border/60 pt-1.5">
                         {dim.evidence.map((quote, i) => (
-                          <li key={i} className="font-body text-xs italic text-muted-foreground">
+                          <li key={i} className="font-body text-[11px] italic text-muted-foreground">
                             &ldquo;{quote}&rdquo;
                           </li>
                         ))}
@@ -232,10 +229,11 @@ export function InterviewReportClient({
             </div>
           </Card>
 
+          {/* Strengths & Weak Areas Grid */}
           <div className="grid gap-6 sm:grid-cols-2">
             <Card>
-              <h2 className="font-headline text-lg font-semibold text-foreground">Strengths</h2>
-              <ul className="mt-3 list-inside list-disc space-y-1 font-body text-sm text-foreground">
+              <h2 className="font-body text-sm font-semibold text-foreground">Observed strengths</h2>
+              <ul className="mt-3 list-inside list-disc space-y-1 font-body text-xs text-foreground">
                 {report.strengths.map((s, i) => (
                   <li key={i}>{s}</li>
                 ))}
@@ -243,13 +241,15 @@ export function InterviewReportClient({
             </Card>
 
             <Card>
-              <h2 className="font-headline text-lg font-semibold text-foreground">Weak areas</h2>
+              <h2 className="font-body text-sm font-semibold text-foreground">Diagnostic weak areas</h2>
               <ul className="mt-3 space-y-2">
                 {report.weak_areas_summary.map((area, i) => (
-                  <li key={i} className="font-body text-sm text-foreground">
-                    <span className="font-medium">{area.skill}</span>{" "}
-                    <span className="text-xs capitalize text-muted-foreground">({area.severity})</span>
-                    <p className="text-xs text-muted-foreground">{area.notes}</p>
+                  <li key={i} className="font-body text-xs space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-medium text-foreground">{area.skill}</span>
+                      <span className="text-[10px] text-muted-foreground uppercase">({area.severity})</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">{area.notes}</p>
                   </li>
                 ))}
               </ul>
@@ -257,8 +257,8 @@ export function InterviewReportClient({
           </div>
 
           <Card>
-            <h2 className="font-headline text-lg font-semibold text-foreground">Recommended next practice</h2>
-            <ul className="mt-3 list-inside list-disc space-y-1 font-body text-sm text-foreground">
+            <h2 className="font-body text-sm font-semibold text-foreground">Recommended practice actions</h2>
+            <ul className="mt-2.5 list-inside list-disc space-y-1 font-body text-xs text-foreground">
               {report.practice_actions.map((action, i) => (
                 <li key={i}>{action}</li>
               ))}
@@ -267,18 +267,17 @@ export function InterviewReportClient({
         </>
       )}
 
-      {/* Proctoring & Integrity Audit Breakdown */}
+      {/* Proctoring & Integrity Telemetry Card */}
       <ProctoringAuditCard summary={proctoringSummary} />
 
+      {/* Full Transcript */}
       <Card>
-        <h2 className="font-headline text-lg font-semibold text-foreground">Full transcript</h2>
-        <p className="mt-1 font-body text-xs text-muted-foreground">
-          Transcript text is preview sample content, not a real transcription of your recording. Audio playback
-          below is your real recording, available only for this browser tab until you reload the page (there&apos;s no
-          audio upload wired up yet).
+        <h2 className="font-body text-sm font-semibold text-foreground">Interview transcript & speech recording</h2>
+        <p className="mt-0.5 font-body text-xs text-muted-foreground">
+          Turn-by-turn dialogue and audio playback
         </p>
         {turns.length === 0 ? (
-          <p className="mt-4 font-body text-sm text-muted-foreground">No turns recorded for this interview.</p>
+          <p className="mt-3 font-body text-xs text-muted-foreground">No turns recorded for this interview.</p>
         ) : (
           <ol className="mt-4 space-y-3">
             {turns.map((turn) => (
@@ -304,28 +303,26 @@ function TranscriptTurn({ interviewId, turn }: { interviewId: string; turn: Inte
   const audioUrl = turn.answer_audio_url || localUrl;
 
   return (
-    <li className="rounded-2xl border border-border bg-background p-4">
+    <li className="rounded border border-border/80 bg-background p-3.5 space-y-1.5 font-body text-xs">
       <div className="flex items-center justify-between gap-2">
         <StatusPill>
           {STAGE_LABELS[turn.stage]}
           {turn.is_follow_up ? " · follow-up" : ""}
         </StatusPill>
         {turn.answer_duration_seconds !== null && (
-          <span className="font-metric text-xs text-muted-foreground">
+          <span className="font-metric text-[11px] text-muted-foreground tabular-nums">
             {formatClock(turn.answer_duration_seconds)}
           </span>
         )}
       </div>
-      <p className="mt-2 font-body text-sm font-medium text-foreground">{turn.question_text}</p>
-      <p className="mt-1 font-body text-sm text-muted-foreground">
+      <p className="font-medium text-foreground">{turn.question_text}</p>
+      <p className="text-muted-foreground leading-relaxed">
         {turn.transcript ?? "No transcript recorded."}
       </p>
       {audioUrl ? (
-        <audio controls src={audioUrl} className="mt-3 w-full" />
+        <audio controls src={audioUrl} className="mt-2 w-full h-8" />
       ) : (
-        <p className="mt-3 font-body text-xs text-muted-foreground">
-          Recording unavailable.
-        </p>
+        <p className="mt-1 text-[11px] text-muted-foreground">Recording unavailable.</p>
       )}
     </li>
   );

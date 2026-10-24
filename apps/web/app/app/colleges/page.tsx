@@ -22,78 +22,91 @@ export default async function CollegesPage() {
     .order("name", { ascending: true });
 
   return (
-    <div className="max-w-5xl">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Colleges</h1>
+          <h1 className="font-headline text-2xl font-semibold tracking-tight text-foreground">
+            Colleges
+          </h1>
           <p className="mt-1 font-body text-sm text-muted-foreground">
-            Every college on the platform. Open one to manage its batches.
+            Institutions onboarded to the platform. Manage campus batches and institutional quotas.
           </p>
         </div>
       </div>
 
-      <details className="mt-6 rounded-3xl border border-border bg-card open:pb-6">
-        <summary className="cursor-pointer list-none px-6 py-4 font-body text-sm font-medium text-primary">
-          + Add a college
+      {/* Add College Form Panel */}
+      <details className="rounded-lg border border-border/80 bg-card open:pb-5">
+        <summary className="cursor-pointer list-none px-5 py-3.5 font-body text-xs font-medium text-foreground hover:bg-muted/40">
+          + Onboard a new college
         </summary>
-        <form action={createCollege} className="grid gap-4 px-6 sm:grid-cols-2">
-          <TextField label="Name" name="name" required placeholder="e.g. IIT Bombay" />
-          <TextField label="Slug (optional — derived from name)" name="slug" placeholder="iit-bombay" />
-          <TextField label="City" name="city" />
-          <TextField label="State" name="state" />
-          <TextField label="Website URL" name="website_url" type="url" />
-          <TextField label="Logo URL" name="logo_url" type="url" />
-          <label className="flex items-center gap-2 font-body text-sm text-foreground sm:col-span-2">
-            <input type="checkbox" name="is_active" defaultChecked className="h-4 w-4 rounded border-border" />
-            Active
+        <form action={createCollege} className="grid gap-3.5 px-5 pt-2 sm:grid-cols-2">
+          <TextField label="College name *" name="name" required placeholder="e.g. SASI Institute of Technology" />
+          <TextField label="Slug (optional)" name="slug" placeholder="sasi-institute" />
+          <TextField label="City" name="city" placeholder="Tadepalligudem" />
+          <TextField label="State" name="state" placeholder="Andhra Pradesh" />
+          <TextField label="Website URL" name="website_url" type="url" placeholder="https://sasi.ac.in" />
+          <TextField label="Logo URL" name="logo_url" type="url" placeholder="https://..." />
+          <label className="flex items-center gap-2 font-body text-xs text-foreground sm:col-span-2">
+            <input type="checkbox" name="is_active" defaultChecked className="h-3.5 w-3.5 rounded border-border" />
+            Active institution
           </label>
-          <div className="sm:col-span-2">
-            <button type="submit" className="btn-primary">
+          <div className="sm:col-span-2 pt-1">
+            <button
+              type="submit"
+              className="inline-flex h-8 items-center rounded bg-foreground px-3.5 font-body text-xs font-medium text-background hover:bg-foreground/90"
+            >
               Create college
             </button>
           </div>
         </form>
       </details>
 
-      <div className="mt-6 overflow-x-auto rounded-3xl border border-border bg-card">
+      {/* Colleges Table */}
+      <div className="overflow-x-auto rounded-lg border border-border/80 bg-card">
         {error ? (
-          <p className="p-6 font-body text-sm text-destructive">Couldn&apos;t load colleges: {error.message}</p>
+          <p className="p-5 font-body text-xs text-destructive">Couldn&apos;t load colleges: {error.message}</p>
         ) : !colleges || colleges.length === 0 ? (
-          <p className="p-6 font-body text-sm text-muted-foreground">
-            No colleges yet. Add the first one above.
+          <p className="p-8 text-center font-body text-xs text-muted-foreground">
+            No partner colleges yet. Add the first one above.
           </p>
         ) : (
-          <table className="w-full text-left font-body text-sm">
+          <table className="w-full text-left font-body text-xs">
             <thead>
-              <tr className="border-b border-border text-xs uppercase tracking-label text-muted-foreground">
-                <th className="px-6 py-3 font-medium">Name</th>
-                <th className="px-6 py-3 font-medium">Location</th>
-                <th className="px-6 py-3 font-medium">Slug</th>
-                <th className="px-6 py-3 font-medium">Status</th>
-                <th className="px-6 py-3 font-medium" />
+              <tr className="border-b border-border/60 text-muted-foreground">
+                <th className="px-5 py-2.5 font-medium">Institution</th>
+                <th className="px-4 py-2.5 font-medium">Location</th>
+                <th className="px-4 py-2.5 font-medium">Slug</th>
+                <th className="px-4 py-2.5 font-medium">Status</th>
+                <th className="px-5 py-2.5 text-right font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
               {(colleges as College[]).map((college) => (
-                <tr key={college.id} className="border-b border-border last:border-0">
-                  <td className="px-6 py-4 text-foreground">{college.name}</td>
-                  <td className="px-6 py-4 text-muted-foreground">
+                <tr
+                  key={college.id}
+                  className="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/30"
+                >
+                  <td className="px-5 py-3 font-medium text-foreground">{college.name}</td>
+                  <td className="px-4 py-3 text-muted-foreground">
                     {[college.city, college.state].filter(Boolean).join(", ") || "—"}
                   </td>
-                  <td className="px-6 py-4 font-mono text-xs text-muted-foreground">{college.slug}</td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-3 font-mono text-[11px] text-muted-foreground">{college.slug}</td>
+                  <td className="px-4 py-3">
                     <span
                       className={
                         college.is_active
-                          ? "inline-flex rounded-full bg-secondary/15 px-2.5 py-1 text-xs font-medium text-secondary"
-                          : "inline-flex rounded-full bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                          ? "inline-flex rounded border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-900 leading-none dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40"
+                          : "inline-flex rounded border border-border/80 bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground leading-none"
                       }
                     >
                       {college.is_active ? "Active" : "Inactive"}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
-                    <Link href={`/app/colleges/${college.id}`} className="font-medium text-primary hover:underline">
+                  <td className="px-5 py-3 text-right">
+                    <Link
+                      href={`/app/colleges/${college.id}`}
+                      className="font-medium text-foreground underline-offset-4 hover:underline"
+                    >
                       Manage →
                     </Link>
                   </td>
@@ -122,7 +135,7 @@ function TextField({
 }) {
   return (
     <div>
-      <label htmlFor={name} className="font-body text-sm font-medium text-foreground">
+      <label htmlFor={name} className="block font-body text-xs font-medium text-foreground">
         {label}
       </label>
       <input
@@ -131,7 +144,7 @@ function TextField({
         type={type}
         required={required}
         placeholder={placeholder}
-        className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-sm text-foreground outline-none transition-colors focus:border-primary"
+        className="mt-1 h-8 w-full rounded border border-border/80 bg-background px-3 font-body text-xs text-foreground outline-none focus:border-foreground/40 placeholder:text-muted-foreground/60"
       />
     </div>
   );

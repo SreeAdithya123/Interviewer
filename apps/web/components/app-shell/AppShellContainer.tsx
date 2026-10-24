@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { PanelLeftClose, PanelLeftOpen, Menu, X } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Menu, X, ArrowUpRight } from "lucide-react";
 import type { Profile } from "@/lib/auth/current-profile";
 import type { NavItem } from "@/lib/auth/nav-config";
 import AppSidebarNav from "@/components/app-shell/AppSidebarNav";
@@ -26,11 +26,23 @@ function subscribeSidebar(callback: () => void) {
 }
 
 function getSidebarSnapshot(): boolean {
+  if (typeof window === "undefined") return false;
   return localStorage.getItem(STORAGE_KEY) === "true";
 }
 
 function getSidebarServerSnapshot(): boolean {
   return false;
+}
+
+function getUserInitials(nameOrEmail: string | null | undefined): string {
+  if (!nameOrEmail) return "U";
+  const trimmed = nameOrEmail.trim();
+  if (trimmed.includes("@")) return trimmed.charAt(0).toUpperCase();
+  const parts = trimmed.split(" ").filter(Boolean);
+  if (parts.length >= 2) {
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  }
+  return trimmed.slice(0, 2).toUpperCase();
 }
 
 export function AppShellContainer({ profile, navItems, children }: AppShellContainerProps) {
@@ -56,46 +68,73 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
     window.dispatchEvent(new Event("sidebar-toggle"));
   }
 
+  const initials = getUserInitials(profile.full_name || profile.email);
+  const roleName = profile.role.replace(/_/g, " ");
+
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
-      {/* Desktop Collapsible Sidebar */}
+    <div className="flex min-h-screen bg-background text-foreground antialiased">
+      {/* Desktop Collapsible Sidebar — 232px width, grounded surface */}
       <aside
-        className={`hidden sm:flex flex-col border-r border-border bg-card transition-all duration-300 ease-in-out ${
-          isCollapsed ? "w-0 p-0 border-r-0 overflow-hidden opacity-0 pointer-events-none" : "w-64 px-5 py-8 opacity-100"
+        className={`hidden sm:flex flex-col border-r border-border/80 bg-background transition-all duration-200 ease-in-out ${
+          isCollapsed
+            ? "w-0 p-0 border-r-0 overflow-hidden opacity-0 pointer-events-none"
+            : "w-[232px] px-4 py-5 opacity-100"
         }`}
         aria-hidden={isCollapsed}
       >
-        <div className="flex items-center justify-between gap-2">
-          <Link href="/app" className="truncate font-headline text-lg font-bold text-foreground">
-            Vyoman
+        {/* Brand & Workspace Identity */}
+        <div className="flex items-start justify-between gap-2 px-1">
+          <Link href="/app" className="group flex flex-col">
+            <div className="flex items-center gap-2">
+              <span className="flex h-6 w-6 items-center justify-center rounded bg-foreground font-mono text-xs font-semibold text-background">
+                V
+              </span>
+              <span className="font-headline text-base font-semibold tracking-tight text-foreground">
+                Vyoman
+              </span>
+            </div>
+            <span className="mt-1 font-body text-[11px] text-muted-foreground">
+              Campus Placement OS
+            </span>
           </Link>
           <button
             type="button"
             onClick={toggleSidebar}
             title="Hide sidebar (Ctrl+B)"
             aria-label="Hide sidebar"
-            className="rounded-xl p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           >
-            <PanelLeftClose className="h-5 w-5" />
+            <PanelLeftClose className="h-4 w-4" />
           </button>
         </div>
 
+        {/* Navigation list */}
         <AppSidebarNav items={navItems} />
 
-        <div className="mt-auto space-y-3 border-t border-border pt-5">
-          <p className="truncate font-body text-sm font-medium text-foreground">
-            {profile.full_name ?? profile.email}
-          </p>
-          <p className="font-body text-xs capitalize text-muted-foreground">
-            {profile.role.replace("_", " ")}
-          </p>
-          <SignOutButton />
+        {/* User Scope Footer */}
+        <div className="mt-auto border-t border-border/80 pt-4">
+          <div className="flex items-center gap-2.5 px-1">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-body text-xs font-medium text-foreground">
+              {initials}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate font-body text-xs font-medium text-foreground">
+                {profile.full_name ?? profile.email}
+              </p>
+              <p className="font-body text-[11px] capitalize text-muted-foreground">
+                {roleName}
+              </p>
+            </div>
+          </div>
+          <div className="mt-3 px-1">
+            <SignOutButton />
+          </div>
         </div>
       </aside>
 
       {/* Mobile Drawer (overlay) */}
       {isMobileOpen && (
-        <div className="fixed inset-0 z-50 flex sm:hidden">
+        <div className="fixed inset-0 z-50 flex sm:hidden" role="dialog" aria-modal="true">
           {/* Backdrop */}
           <div
             className="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity"
@@ -103,22 +142,27 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
           />
 
           {/* Drawer content */}
-          <aside className="relative z-10 flex w-72 flex-col border-r border-border bg-card p-6 shadow-2xl">
+          <aside className="relative z-10 flex w-72 flex-col border-r border-border/80 bg-background p-5 shadow-lg">
             <div className="flex items-center justify-between">
               <Link
                 href="/app"
                 onClick={() => setIsMobileOpen(false)}
-                className="font-headline text-lg font-bold text-foreground"
+                className="flex items-center gap-2"
               >
-                Vyoman
+                <span className="flex h-6 w-6 items-center justify-center rounded bg-foreground font-mono text-xs font-semibold text-background">
+                  V
+                </span>
+                <span className="font-headline text-base font-semibold tracking-tight text-foreground">
+                  Vyoman
+                </span>
               </Link>
               <button
                 type="button"
                 onClick={() => setIsMobileOpen(false)}
                 aria-label="Close menu"
-                className="rounded-xl p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
@@ -127,14 +171,23 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
               onNavigate={() => setIsMobileOpen(false)}
             />
 
-            <div className="mt-auto space-y-3 border-t border-border pt-5">
-              <p className="truncate font-body text-sm font-medium text-foreground">
-                {profile.full_name ?? profile.email}
-              </p>
-              <p className="font-body text-xs capitalize text-muted-foreground">
-                {profile.role.replace("_", " ")}
-              </p>
-              <SignOutButton />
+            <div className="mt-auto border-t border-border/80 pt-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-body text-xs font-medium text-foreground">
+                  {initials}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-body text-xs font-medium text-foreground">
+                    {profile.full_name ?? profile.email}
+                  </p>
+                  <p className="font-body text-[11px] capitalize text-muted-foreground">
+                    {roleName}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3">
+                <SignOutButton />
+              </div>
             </div>
           </aside>
         </div>
@@ -142,17 +195,17 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
 
       {/* Main Content Area */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Top Control Bar (Desktop collapsed button & Mobile header) */}
-        <header className="flex h-14 items-center justify-between border-b border-border/80 bg-card/60 px-4 backdrop-blur-sm sm:px-6">
+        {/* Top Control Bar (48px height, flat with subtle rule) */}
+        <header className="flex h-12 items-center justify-between border-b border-border/70 bg-background/90 px-4 sm:px-8">
           <div className="flex items-center gap-3">
             {/* Mobile hamburger button */}
             <button
               type="button"
               onClick={() => setIsMobileOpen(true)}
               aria-label="Open navigation menu"
-              className="rounded-xl p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
+              className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground sm:hidden"
             >
-              <Menu className="h-5 w-5" />
+              <Menu className="h-4 w-4" />
             </button>
 
             {/* Desktop Side View Toggle button when collapsed */}
@@ -162,29 +215,37 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
                 onClick={toggleSidebar}
                 title="Show sidebar (Ctrl+B)"
                 aria-label="Show sidebar"
-                className="hidden sm:inline-flex items-center gap-2 rounded-xl border border-border bg-card px-3 py-1.5 font-body text-xs font-medium text-foreground shadow-sm transition-all hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded border border-border/80 bg-background px-2.5 py-1 font-body text-xs font-medium text-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
-                <PanelLeftOpen className="h-4 w-4 text-primary" />
-                <span>Side View</span>
+                <PanelLeftOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                <span>Sidebar</span>
                 <span className="text-[10px] text-muted-foreground">Ctrl+B</span>
               </button>
             )}
 
-            <Link href="/app" className="font-headline text-base font-bold text-foreground sm:hidden">
+            <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Vyoman</span>
+              <span>/</span>
+              <span className="capitalize text-foreground font-medium">{roleName}</span>
+            </div>
+
+            <Link href="/app" className="font-headline text-sm font-semibold text-foreground sm:hidden">
               Vyoman
             </Link>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="hidden sm:inline-block font-body text-xs text-muted-foreground">
-              {profile.role.replace("_", " ")}
+              {profile.email}
             </span>
             <SignOutButton />
           </div>
         </header>
 
         {/* Scrollable page body */}
-        <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8 overflow-x-hidden">{children}</main>
+        <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8 overflow-x-hidden">
+          {children}
+        </main>
       </div>
     </div>
   );

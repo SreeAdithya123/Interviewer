@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 
 export function AppSidebarNav({
   items,
-  className = "mt-8 flex flex-1 flex-col gap-1",
+  className = "mt-6 flex flex-1 flex-col gap-0.5",
   onNavigate,
 }: {
   items: NavItem[];
@@ -18,22 +18,25 @@ export function AppSidebarNav({
   const pathname = usePathname();
 
   return (
-    <nav className={className}>
+    <nav className={className} aria-label="Sidebar navigation">
       {items.map((item) => {
-        const active = pathname === item.href || pathname?.startsWith(`${item.href}/`);
+        const active = pathname === item.href || (item.href !== "/app" && pathname?.startsWith(`${item.href}/`));
         return (
           <Link
             key={item.href}
             href={item.href}
             onClick={() => onNavigate?.()}
             className={cn(
-              "shrink-0 whitespace-nowrap rounded-xl px-3 py-2 font-body text-sm font-medium transition-colors",
+              "group relative flex items-center justify-between rounded-md px-3 py-2 font-body text-sm transition-colors",
               active
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ? "bg-muted font-medium text-foreground"
+                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
             )}
           >
-            {item.label}
+            <span className="truncate">{item.label}</span>
+            {active && (
+              <span className="h-1.5 w-1.5 rounded-full bg-foreground/60 transition-transform group-hover:scale-125" />
+            )}
           </Link>
         );
       })}

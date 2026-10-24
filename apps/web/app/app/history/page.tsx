@@ -3,23 +3,12 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { DIFFICULTY_LABELS, INTERVIEW_TYPE_LABELS, type Interview } from "@/lib/interview/types";
 import { formatClock } from "@/lib/interview/recording";
+import StatusBadge from "@/components/app-shell/StatusBadge";
 
 export const metadata: Metadata = {
   title: "Interview history",
 };
 
-const STATUS_LABEL: Record<Interview["status"], string> = {
-  pending: "Not started",
-  in_progress: "In progress",
-  completed: "Completed",
-  abandoned: "Abandoned",
-};
-
-// /app/history — BUILD_SPEC Part 4.5 step 9 / Part 4.1 nav ("student:
-// Interview, Resume, Chat, History"). Reads the real `interviews` table;
-// RLS already scopes this to the caller's own rows (or, for a
-// college_admin/platform_admin, their college's/everyone's), so no
-// explicit user_id filter is needed here.
 export default async function InterviewHistoryPage() {
   const supabase = await createClient();
   const { data } = await supabase
@@ -30,26 +19,37 @@ export default async function InterviewHistoryPage() {
   const interviews = (data ?? []) as Interview[];
 
   return (
-    <div className="max-w-3xl space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-headline text-2xl font-semibold tracking-tight text-foreground">Interview history</h1>
-        <Link href="/app/interview" className="btn-primary">
-          New interview
+    <div className="mx-auto max-w-4xl space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="font-headline text-2xl font-semibold tracking-tight text-foreground">
+            Interview History
+          </h1>
+          <p className="mt-1 font-body text-sm text-muted-foreground">
+            Record of completed and active AI mock interview sessions.
+          </p>
+        </div>
+
+        <Link
+          href="/app/interview"
+          className="inline-flex h-9 items-center justify-center rounded-md bg-foreground px-4 font-body text-xs font-medium text-background transition-colors hover:bg-foreground/90"
+        >
+          + New interview
         </Link>
       </div>
 
       {interviews.length === 0 ? (
-        <p className="rounded-3xl border border-dashed border-border bg-card p-10 text-center font-body text-sm text-muted-foreground shadow-soft">
-          No interviews yet. Start your first one above.
-        </p>
+        <div className="rounded-lg border border-dashed border-border/80 bg-card p-12 text-center">
+          <p className="font-body text-xs text-muted-foreground">
+            No interview sessions recorded yet. Start your first mock interview above.
+          </p>
+        </div>
       ) : (
-        <ul className="space-y-3">
+        <div className="rounded-lg border border-border/80 bg-card divide-y divide-border/60">
           {interviews.map((interview) => (
-            <li key={interview.id}>
-              <HistoryRow interview={interview} />
-            </li>
+            <HistoryRow key={interview.id} interview={interview} />
           ))}
-        </ul>
+        </div>
       )}
     </div>
   );
@@ -64,13 +64,13 @@ function HistoryRow({ interview }: { interview: Interview }) {
         : `/app/interview/${interview.id}`;
 
   const content = (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-5 shadow-soft transition-colors hover:border-primary/40">
+    <div className="flex flex-wrap items-center justify-between gap-3 p-4 transition-colors hover:bg-muted/30">
       <div>
-        <p className="font-body text-sm font-medium text-foreground">
-          {INTERVIEW_TYPE_LABELS[interview.interview_type]}
+        <p className="font-body text-xs font-medium text-foreground capitalize">
+          {INTERVIEW_TYPE_LABELS[interview.interview_type]} Interview
           {interview.target_role ? ` · ${interview.target_role}` : ""}
         </p>
-        <p className="mt-1 font-body text-xs text-muted-foreground">
+        <p className="mt-0.5 font-body text-[11px] text-muted-foreground">
           {DIFFICULTY_LABELS[interview.difficulty]} difficulty
           {interview.company_type ? ` · ${interview.company_type}` : ""} ·{" "}
           {new Date(interview.created_at).toLocaleDateString("en-IN", {
@@ -78,15 +78,25 @@ function HistoryRow({ interview }: { interview: Interview }) {
             month: "short",
             day: "numeric",
           })}
-          {interview.duration_seconds ? ` · ${formatClock(interview.duration_seconds)}` : ""}
+          {interview.duration_seconds ? ` · ${formatClock(interview.duration_seconds)} duration` : ""}
         </p>
       </div>
-      <span className="font-body text-xs font-medium capitalize text-muted-foreground">
-        {STATUS_LABEL[interview.status]}
-      </span>
+
+      <div className="flex items-center gap-3">
+        <StatusBadge status={interview.status} />
+        {href && (
+          <span className="font-body text-xs font-medium text-foreground underline-offset-4 group-hover:underline">
+            {interview.status === "completed" ? "Report →" : "Resume →"}
+          </span>
+        )}
+      </div>
     </div>
   );
 
   if (!href) return content;
-  return <Link href={href}>{content}</Link>;
+  return (
+    <Link href={href} className="group block">
+      {content}
+    </Link>
+  );
 }

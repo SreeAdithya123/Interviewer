@@ -16,9 +16,9 @@ async function fileToBase64(file: File): Promise<string> {
 type Source = "upload" | "saved";
 
 const SEVERITY_STYLES: Record<string, string> = {
-  high: "border-destructive/30 bg-destructive/5 text-destructive",
-  medium: "border-accent/30 bg-accent/10 text-accent",
-  low: "border-border bg-muted/40 text-muted-foreground",
+  high: "border-rose-200/60 bg-rose-50 text-rose-900 dark:border-rose-900/40 dark:bg-rose-950/30 dark:text-rose-300",
+  medium: "border-amber-200/60 bg-amber-50 text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300",
+  low: "border-border/80 bg-muted/40 text-muted-foreground",
 };
 
 export function ScannerClient({ resumes }: { resumes: ResumeRow[] }) {
@@ -57,86 +57,104 @@ export function ScannerClient({ resumes }: { resumes: ResumeRow[] }) {
   }
 
   return (
-    <div className="max-w-4xl space-y-8">
+    <div className="mx-auto max-w-4xl space-y-6">
       <div>
-        <Link href="/app/resume" className="font-body text-xs font-medium text-muted-foreground hover:text-foreground">
+        <Link href="/app/resume" className="font-body text-xs text-muted-foreground hover:text-foreground">
           &larr; Back to resumes
         </Link>
-        <h1 className="mt-1 font-headline text-2xl text-foreground">Resume scanner</h1>
-        <p className="mt-1 font-body text-sm text-muted-foreground">
-          Four honest checks on your resume &mdash; no single &ldquo;ATS score,&rdquo; because no universal one exists.
+        <h1 className="mt-1 font-headline text-2xl font-semibold tracking-tight text-foreground">
+          Resume Scanner
+        </h1>
+        <p className="mt-0.5 font-body text-sm text-muted-foreground">
+          Four honest ATS checks: section health, job description keyword coverage, action-metric quality, and PDF formatting risks.
         </p>
       </div>
 
-      <div className="rounded-3xl border border-border bg-card p-6 shadow-soft">
-        <div className="flex gap-2">
+      {/* Input Configuration Card */}
+      <div className="rounded-lg border border-border/80 bg-card p-5 space-y-4">
+        {/* Source Toggle */}
+        <div className="inline-flex h-8 items-center rounded border border-border/80 bg-muted/40 p-0.5 text-xs font-body">
           <button
             type="button"
             onClick={() => setSource("saved")}
             disabled={resumes.length === 0}
-            className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors disabled:opacity-40 ${
-              source === "saved" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
+            className={`rounded px-3 py-1 font-medium transition-colors ${
+              source === "saved"
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
-            Use a saved resume
+            Use saved profile
           </button>
           <button
             type="button"
             onClick={() => setSource("upload")}
-            className={`rounded-full border px-4 py-2 font-body text-sm font-medium transition-colors ${
-              source === "upload" ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"
+            className={`rounded px-3 py-1 font-medium transition-colors ${
+              source === "upload"
+                ? "bg-background text-foreground shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
             }`}
           >
             Upload a PDF
           </button>
         </div>
 
-        <div className="mt-4">
+        {/* Selected File / Profile */}
+        <div>
           {source === "saved" ? (
             resumes.length === 0 ? (
-              <p className="font-body text-sm text-muted-foreground">
-                You have no saved resumes yet.{" "}
-                <Link href="/app/resume/builder" className="font-medium text-primary underline">
+              <p className="font-body text-xs text-muted-foreground">
+                You have no saved resumes.{" "}
+                <Link href="/app/resume/builder" className="font-medium text-foreground underline">
                   Build one first
                 </Link>
-                , or upload a PDF instead.
+                , or upload a PDF.
               </p>
             ) : (
-              <select
-                value={selectedResumeId}
-                onChange={(e) => setSelectedResumeId(e.target.value)}
-                className="w-full max-w-sm rounded-xl border border-input bg-background px-3 py-2 font-body text-sm text-foreground outline-none focus:border-primary"
-              >
-                {resumes.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.title}
-                    {r.is_primary ? " (primary)" : ""}
-                  </option>
-                ))}
-              </select>
+              <div>
+                <label className="block font-body text-xs font-medium text-muted-foreground mb-1">
+                  Saved resume profile
+                </label>
+                <select
+                  value={selectedResumeId}
+                  onChange={(e) => setSelectedResumeId(e.target.value)}
+                  className="h-8 w-full max-w-sm rounded border border-border/80 bg-background px-2.5 font-body text-xs text-foreground outline-none focus:border-foreground/40"
+                >
+                  {resumes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.title}
+                      {r.is_primary ? " (primary)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
             )
           ) : (
             <div>
               {file ? (
-                <div className="flex items-center gap-3 rounded-2xl border border-border bg-background/60 px-4 py-3">
-                  <FileText className="h-5 w-5 text-primary" strokeWidth={1.75} />
-                  <div className="flex-1">
-                    <p className="font-body text-sm text-foreground">{file.name}</p>
-                    <p className="font-body text-xs text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
+                <div className="flex items-center gap-3 rounded border border-border/80 bg-background px-3 py-2">
+                  <FileText className="h-4 w-4 text-muted-foreground shrink-0" strokeWidth={1.5} />
+                  <div className="flex-1 min-w-0">
+                    <p className="font-body text-xs font-medium text-foreground truncate">{file.name}</p>
+                    <p className="font-body text-[11px] text-muted-foreground">{(file.size / 1024).toFixed(1)} KB</p>
                   </div>
-                  <button type="button" onClick={() => setFile(null)} className="rounded-full p-1.5 hover:bg-muted">
-                    <X className="h-4 w-4 text-muted-foreground" strokeWidth={1.75} />
+                  <button
+                    type="button"
+                    onClick={() => setFile(null)}
+                    className="rounded p-1 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-3.5 w-3.5" />
                   </button>
                 </div>
               ) : (
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-border px-6 py-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
+                  className="flex w-full flex-col items-center gap-1.5 rounded border border-dashed border-border/80 bg-background/50 p-6 text-center transition-colors hover:bg-muted/30"
                 >
-                  <Upload className="h-7 w-7 text-muted-foreground" strokeWidth={1.5} />
-                  <span className="font-body text-sm font-medium text-foreground">Click to choose a PDF</span>
-                  <span className="font-body text-xs text-muted-foreground">Read directly by the engine &mdash; nothing is stored except the scan&rsquo;s results.</span>
+                  <Upload className="h-5 w-5 text-muted-foreground" strokeWidth={1.5} />
+                  <span className="font-body text-xs font-medium text-foreground">Click to upload resume PDF</span>
+                  <span className="font-body text-[11px] text-muted-foreground">Parsed directly by the engine for diagnostic analysis</span>
                 </button>
               )}
               <input
@@ -150,140 +168,132 @@ export function ScannerClient({ resumes }: { resumes: ResumeRow[] }) {
           )}
         </div>
 
-        <div className="mt-5">
-          <label className="font-body text-xs font-medium text-muted-foreground">Job description (optional)</label>
+        {/* Optional Job Description */}
+        <div>
+          <label className="block font-body text-xs font-medium text-muted-foreground mb-1">
+            Job description (optional &mdash; tests specific keyword coverage)
+          </label>
           <textarea
             value={jdText}
             onChange={(e) => setJdText(e.target.value)}
-            rows={4}
-            placeholder="Paste a job description to check your resume against it."
-            className="mt-1 w-full resize-none rounded-xl border border-input bg-background px-3 py-2 font-body text-sm text-foreground outline-none focus:border-primary"
+            rows={3}
+            placeholder="Paste the target job description or requirements here..."
+            className="w-full resize-none rounded border border-border/80 bg-background p-2.5 font-body text-xs text-foreground outline-none focus:border-foreground/40 placeholder:text-muted-foreground/60"
           />
         </div>
 
-        <button
-          type="button"
-          onClick={handleScan}
-          disabled={!canScan || status === "scanning"}
-          className="btn-primary mt-5 flex items-center gap-2 text-sm disabled:opacity-60"
-        >
-          {status === "scanning" ? (
-            <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-          ) : (
-            <ScanLine className="h-4 w-4" strokeWidth={1.75} />
-          )}
-          {status === "scanning" ? "Analyzing resume..." : "Scan resume"}
-        </button>
+        {/* Scan Trigger */}
+        <div className="pt-1">
+          <button
+            type="button"
+            onClick={handleScan}
+            disabled={!canScan || status === "scanning"}
+            className="inline-flex h-8 items-center gap-1.5 rounded bg-foreground px-4 font-body text-xs font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-60"
+          >
+            {status === "scanning" ? (
+              <span className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-background border-t-transparent" />
+            ) : (
+              <ScanLine className="h-3.5 w-3.5" />
+            )}
+            <span>{status === "scanning" ? "Analyzing resume..." : "Scan resume"}</span>
+          </button>
+        </div>
 
-        {status === "scanning" && (
-          <div className="mt-5 rounded-2xl border border-primary/20 bg-primary/5 p-4 animate-pulse">
-            <div className="flex items-center gap-3">
-              <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <div className="flex-1">
-                <p className="font-body text-sm font-medium text-foreground">
-                  Analyzing document with Gemini AI...
-                </p>
-                <p className="font-body text-xs text-muted-foreground">
-                  Extracting sections, validating bullet point metrics, and evaluating formatting risks.
-                </p>
-              </div>
-            </div>
-          </div>
+        {status === "error" && error && (
+          <p className="rounded border border-rose-200 bg-rose-50 px-3 py-2 font-body text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+            {error}
+          </p>
         )}
-
-        {status === "error" && error && <p className="mt-3 font-body text-sm text-destructive">{error}</p>}
       </div>
 
+      {/* Results Section */}
       {result && (
-        <div className="space-y-5">
-          <ResultCard title="1. Parse health" icon={<FileText className="h-4 w-4" strokeWidth={1.75} />}>
-            <p className="font-body text-sm capitalize text-foreground">
-              Status: <span className="font-semibold">{result.parse_health.status}</span>
+        <div className="space-y-4">
+          <ResultCard title="1. Section parsing health" icon={<FileText className="h-4 w-4" />}>
+            <p className="font-body text-xs text-foreground">
+              Status: <span className="font-semibold capitalize">{result.parse_health.status}</span>
             </p>
             {result.parse_health.sections_detected.length > 0 && (
-              <p className="mt-2 font-body text-xs text-muted-foreground">
-                Detected: {result.parse_health.sections_detected.join(", ")}
+              <p className="mt-1 font-body text-xs text-muted-foreground">
+                Detected sections: {result.parse_health.sections_detected.join(", ")}
               </p>
             )}
             {result.parse_health.sections_missing.length > 0 && (
-              <p className="mt-1 font-body text-xs text-destructive">Missing: {result.parse_health.sections_missing.join(", ")}</p>
+              <p className="mt-1 font-body text-xs text-rose-700 dark:text-rose-400">
+                Missing sections: {result.parse_health.sections_missing.join(", ")}
+              </p>
             )}
-            <ul className="mt-2 space-y-1">
+            <ul className="mt-2 space-y-0.5 border-t border-border/60 pt-2 font-body text-xs text-muted-foreground">
               {result.parse_health.notes.map((n, i) => (
-                <li key={i} className="font-body text-xs text-muted-foreground">
-                  &bull; {n}
-                </li>
+                <li key={i}>• {n}</li>
               ))}
             </ul>
           </ResultCard>
 
-          <ResultCard title="2. Job description match" icon={<CheckCircle2 className="h-4 w-4" strokeWidth={1.75} />}>
+          <ResultCard title="2. Job description alignment" icon={<CheckCircle2 className="h-4 w-4" />}>
             {result.jd_match ? (
-              <div className="space-y-3">
+              <div className="space-y-3 font-body text-xs">
                 <div>
-                  <p className="font-body text-xs font-medium text-foreground">Present</p>
-                  <div className="mt-1 flex flex-wrap gap-1.5">
-                    {result.jd_match.skills_present.length === 0 && <span className="font-body text-xs text-muted-foreground">None detected.</span>}
+                  <p className="font-medium text-foreground">Matching skills detected</p>
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {result.jd_match.skills_present.length === 0 && (
+                      <span className="text-muted-foreground">None identified.</span>
+                    )}
                     {result.jd_match.skills_present.map((s) => (
-                      <span key={s} className="rounded-full bg-primary/10 px-2 py-0.5 font-body text-xs text-primary">
+                      <span key={s} className="rounded border border-emerald-200/60 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-900 dark:border-emerald-800/40 dark:bg-emerald-950/40 dark:text-emerald-300">
                         {s}
                       </span>
                     ))}
                   </div>
                 </div>
+
                 <div>
-                  <p className="font-body text-xs font-medium text-foreground">Missing &mdash; where to add them</p>
+                  <p className="font-medium text-foreground">Missing requirements to incorporate</p>
                   <ul className="mt-1 space-y-1">
-                    {result.jd_match.skills_missing.length === 0 && <li className="font-body text-xs text-muted-foreground">Nothing obviously missing.</li>}
+                    {result.jd_match.skills_missing.length === 0 && (
+                      <li className="text-muted-foreground">All key requirements present.</li>
+                    )}
                     {result.jd_match.skills_missing.map((m) => (
-                      <li key={m.skill} className="font-body text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">{m.skill}</span> &mdash; {m.suggested_section}
+                      <li key={m.skill} className="text-muted-foreground">
+                        <span className="font-medium text-foreground">{m.skill}</span> &mdash; add to {m.suggested_section}
                       </li>
                     ))}
                   </ul>
                 </div>
-                {result.jd_match.notes.map((n, i) => (
-                  <p key={i} className="font-body text-xs text-muted-foreground">
-                    {n}
-                  </p>
-                ))}
               </div>
             ) : (
-              <p className="font-body text-sm text-muted-foreground">No job description was pasted, so this check was skipped.</p>
+              <p className="font-body text-xs text-muted-foreground">
+                No job description was provided. Paste a JD above to evaluate keyword overlap.
+              </p>
             )}
           </ResultCard>
 
-          <ResultCard title="3. Bullet quality" icon={<AlertTriangle className="h-4 w-4" strokeWidth={1.75} />}>
+          <ResultCard title="3. Bullet point metric quality" icon={<AlertTriangle className="h-4 w-4" />}>
             {result.bullet_quality.bullets.length === 0 ? (
-              <p className="font-body text-sm text-muted-foreground">{result.bullet_quality.overall_notes[0]}</p>
+              <p className="font-body text-xs text-muted-foreground">{result.bullet_quality.overall_notes[0]}</p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-2.5">
                 {result.bullet_quality.bullets.map((b, i) => (
-                  <div key={i} className="rounded-xl border border-border bg-background/60 p-3">
-                    <p className="font-body text-xs font-medium text-muted-foreground">{b.section}</p>
-                    <p className="mt-1 font-body text-sm text-foreground">{b.text}</p>
+                  <div key={i} className="rounded border border-border/80 bg-background p-3 font-body text-xs space-y-1">
+                    <p className="text-[11px] font-medium text-muted-foreground">{b.section}</p>
+                    <p className="font-medium text-foreground leading-relaxed">{b.text}</p>
                     {b.issues.map((issue, j) => (
-                      <p key={j} className="mt-1 font-body text-xs text-accent">
-                        &#9888; {issue}
+                      <p key={j} className="text-[11px] text-amber-800 dark:text-amber-300">
+                        ⚠ {issue}
                       </p>
                     ))}
-                    {b.suggestion && <p className="mt-1 font-body text-xs text-muted-foreground">{b.suggestion}</p>}
+                    {b.suggestion && <p className="text-[11px] text-muted-foreground italic">Suggestion: {b.suggestion}</p>}
                   </div>
-                ))}
-                {result.bullet_quality.overall_notes.map((n, i) => (
-                  <p key={i} className="font-body text-xs text-muted-foreground">
-                    {n}
-                  </p>
                 ))}
               </div>
             )}
           </ResultCard>
 
-          <ResultCard title="4. Formatting risks" icon={<AlertTriangle className="h-4 w-4" strokeWidth={1.75} />}>
-            <div className="space-y-2">
+          <ResultCard title="4. ATS formatting & syntax risks" icon={<AlertTriangle className="h-4 w-4" />}>
+            <div className="space-y-1.5 font-body text-xs">
               {result.formatting_risks.risks.map((risk, i) => (
-                <div key={i} className={`rounded-xl border px-3 py-2 font-body text-xs ${SEVERITY_STYLES[risk.severity]}`}>
-                  <span className="font-semibold uppercase">{risk.severity}</span> &mdash; {risk.message}
+                <div key={i} className={`rounded border px-2.5 py-1.5 ${SEVERITY_STYLES[risk.severity]}`}>
+                  <span className="font-medium uppercase">{risk.severity}</span>: {risk.message}
                 </div>
               ))}
             </div>
@@ -296,9 +306,9 @@ export function ScannerClient({ resumes }: { resumes: ResumeRow[] }) {
 
 function ResultCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-soft">
-      <h3 className="flex items-center gap-2 font-headline text-base text-foreground">
-        <span className="text-primary">{icon}</span>
+    <div className="rounded-lg border border-border/80 bg-card p-5">
+      <h3 className="flex items-center gap-2 font-body text-sm font-semibold text-foreground">
+        <span className="text-muted-foreground">{icon}</span>
         {title}
       </h3>
       <div className="mt-3">{children}</div>

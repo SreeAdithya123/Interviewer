@@ -9,7 +9,7 @@ import { updateCandidateStatusAction } from "../actions";
 import { ProctoringAuditCard } from "@/components/proctoring/ProctoringAuditCard";
 import type { ProctoringSummary } from "@/lib/proctoring/types";
 import { getTrustBand } from "@/lib/proctoring/calculator";
-import { X, ShieldAlert } from "lucide-react";
+import { X } from "lucide-react";
 
 interface DriveDetailClientProps {
   drive: PlacementDrive;
@@ -20,21 +20,21 @@ interface DriveDetailClientProps {
 const STATUS_LABELS: Record<CandidateStatus, string> = {
   eligible: "Eligible",
   applied: "Applied",
-  round_1_cleared: "Round 1 Cleared",
-  round_2_cleared: "Round 2 Cleared",
+  round_1_cleared: "Round 1 cleared",
+  round_2_cleared: "Round 2 cleared",
   shortlisted: "Shortlisted",
-  selected: "Selected / Offered",
-  not_qualified: "Not Qualified",
+  selected: "Offered",
+  not_qualified: "Not qualified",
 };
 
-const STATUS_STYLES: Record<CandidateStatus, string> = {
-  eligible: "bg-blue-500/10 text-blue-500 border-blue-500/20",
-  applied: "bg-muted text-muted-foreground border-border",
-  round_1_cleared: "bg-sky-500/10 text-sky-500 border-sky-500/20",
-  round_2_cleared: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
-  shortlisted: "bg-primary/10 text-primary border-primary/20 font-semibold",
-  selected: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 font-bold",
-  not_qualified: "bg-destructive/10 text-destructive border-destructive/20",
+const STATUS_CLASSES: Record<CandidateStatus, string> = {
+  eligible: "bg-sky-50 text-sky-900 border-sky-200/60 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-800/40",
+  applied: "bg-muted text-muted-foreground border-border/80",
+  round_1_cleared: "bg-emerald-50 text-emerald-900 border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40",
+  round_2_cleared: "bg-emerald-50 text-emerald-900 border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/40",
+  shortlisted: "bg-emerald-100 text-emerald-950 border-emerald-300/80 font-medium dark:bg-emerald-900/60 dark:text-emerald-200",
+  selected: "bg-emerald-600 text-white border-transparent font-medium",
+  not_qualified: "bg-rose-50 text-rose-900 border-rose-200/60 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/40",
 };
 
 export function DriveDetailClient({
@@ -136,9 +136,10 @@ export function DriveDetailClient({
     const shortlisted = candidates.filter((c) => c.status === "shortlisted").length;
     const selected = candidates.filter((c) => c.status === "selected").length;
     const round1Cleared = candidates.filter((c) => c.status === "round_1_cleared").length;
-    const avgScore = candidates.length > 0
-      ? Math.round(candidates.reduce((acc, c) => acc + (c.overallScore ?? 0), 0) / candidates.length)
-      : 0;
+    const avgScore =
+      candidates.length > 0
+        ? Math.round(candidates.reduce((acc, c) => acc + (c.overallScore ?? 0), 0) / candidates.length)
+        : 0;
 
     return {
       total: candidates.length,
@@ -192,43 +193,53 @@ export function DriveDetailClient({
       c.notes ?? "",
     ]);
 
-    const filename = `${drive.companyName.toLowerCase().replace(/\s+/g, "-")}-drive-candidates.csv`;
+    const filename = `${drive.companyName.toLowerCase().replace(/\s+/g, "-")}-candidates.csv`;
     downloadCsv(filename, [header, ...rows]);
   };
 
   return (
-    <div className="space-y-8">
-      {/* Back button */}
+    <div className="mx-auto max-w-6xl space-y-6">
+      {/* Breadcrumb Navigation */}
       <div>
-        <Link href="/app/drives" className="font-body text-sm text-muted-foreground hover:text-foreground">
-          ← Back to All Drives
+        <Link
+          href="/app/drives"
+          className="font-body text-xs text-muted-foreground transition-colors hover:text-foreground"
+        >
+          ← Back to campus drives
         </Link>
       </div>
 
-      {/* Main Drive Header Card */}
-      <div className="rounded-3xl border border-border bg-card p-6 shadow-soft sm:p-8">
-        <div className="flex flex-wrap items-start justify-between gap-6">
-          <div className="flex items-center gap-4">
+      {/* Drive Object Header */}
+      <div className="rounded-lg border border-border/80 bg-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="flex items-center gap-3.5">
             <div
-              className="flex h-16 w-16 items-center justify-center rounded-2xl font-headline text-xl font-bold text-white shadow-md"
-              style={{ backgroundColor: drive.companyColor }}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded font-headline text-sm font-semibold text-white"
+              style={{ backgroundColor: drive.companyColor || "#1b6c80" }}
             >
               {drive.companyLogoText}
             </div>
             <div>
-              <div className="flex items-center gap-3">
-                <h1 className="font-headline text-2xl font-bold text-foreground sm:text-3xl">
+              <div className="flex items-center gap-2">
+                <h1 className="font-headline text-xl font-semibold tracking-tight text-foreground">
                   {drive.companyName}
                 </h1>
-                <span className="rounded-full bg-emerald-500/10 px-3 py-1 font-body text-xs font-semibold text-emerald-500 uppercase">
+                <span
+                  className={cn(
+                    "rounded px-2 py-0.5 font-body text-[10px] font-medium border leading-none capitalize",
+                    drive.status === "active"
+                      ? "bg-emerald-50 text-emerald-900 border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300"
+                      : "bg-muted text-muted-foreground border-border/80",
+                  )}
+                >
                   {drive.status}
                 </span>
               </div>
-              <p className="mt-1 font-headline text-lg font-semibold text-primary">{drive.targetRole}</p>
-              <div className="mt-1 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                <span>📍 {drive.location}</span>
-                <span>💰 Package: <strong className="text-foreground">{drive.packageCtc}</strong></span>
-                <span>📅 Deadline: {new Date(drive.applicationDeadline).toLocaleDateString()}</span>
+              <p className="mt-0.5 font-body text-sm text-foreground">{drive.targetRole}</p>
+              <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                <span>Location: {drive.location}</span>
+                <span>Package: <strong className="font-medium text-foreground">{drive.packageCtc}</strong></span>
+                <span>Deadline: {new Date(drive.applicationDeadline).toLocaleDateString("en-IN", { month: "short", day: "numeric", year: "numeric" })}</span>
               </div>
             </div>
           </div>
@@ -237,38 +248,35 @@ export function DriveDetailClient({
             <button
               type="button"
               onClick={handleExportCsv}
-              className="btn-secondary flex items-center gap-2 text-xs font-semibold"
+              className="inline-flex h-8 items-center rounded border border-border/80 bg-background px-3 font-body text-xs font-medium text-foreground transition-colors hover:bg-muted"
             >
-              <span>📥</span> Export Recruiter CSV
+              Export CSV
             </button>
           )}
         </div>
 
-        {/* Drive Description */}
-        <p className="mt-6 font-body text-sm leading-relaxed text-muted-foreground">
+        <p className="mt-4 font-body text-xs leading-relaxed text-muted-foreground">
           {drive.jobDescription}
         </p>
 
-        {/* Assessment Rounds Timeline */}
-        <div className="mt-6 border-t border-border pt-6">
-          <h2 className="font-headline text-sm font-semibold uppercase tracking-wider text-muted-foreground">
-            Drive Assessment Pipeline ({drive.rounds.length} Rounds)
-          </h2>
-          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {/* Assessment Pipeline Strip */}
+        <div className="mt-4 border-t border-border/60 pt-4">
+          <p className="font-body text-xs font-medium text-muted-foreground">
+            Assessment pipeline ({drive.rounds.length} rounds)
+          </p>
+          <div className="mt-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-3">
             {drive.rounds.map((round) => (
               <div
                 key={round.roundNumber}
-                className="rounded-2xl border border-border bg-background p-4 shadow-sm"
+                className="rounded border border-border/80 bg-background p-3 text-xs font-body"
               >
                 <div className="flex items-center justify-between">
-                  <span className="font-headline text-xs font-bold text-primary">Round {round.roundNumber}</span>
-                  <span className="font-metric text-xs text-muted-foreground">{round.durationMinutes} mins</span>
+                  <span className="font-medium text-foreground">Round {round.roundNumber}: {round.name}</span>
+                  <span className="text-muted-foreground tabular-nums">{round.durationMinutes}m</span>
                 </div>
-                <h3 className="mt-1 font-headline text-sm font-semibold text-foreground">{round.name}</h3>
-                <p className="mt-1 font-body text-xs text-muted-foreground line-clamp-2">{round.description}</p>
-                <div className="mt-3 flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/60 pt-2">
-                  <span>Type: <strong className="capitalize text-foreground">{round.type}</strong></span>
-                  <span>Cutoff: <strong className="text-foreground">&ge; {round.cutoffScore}%</strong></span>
+                <div className="mt-2 flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/60 pt-1.5">
+                  <span className="capitalize">{round.type}</span>
+                  <span className="font-medium text-foreground">Cutoff ≥ {round.cutoffScore}%</span>
                 </div>
               </div>
             ))}
@@ -276,72 +284,80 @@ export function DriveDetailClient({
         </div>
       </div>
 
-      {/* Candidate Pipeline & Leaderboard Section */}
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
+      {/* Candidate Pipeline KPI Strip */}
+      <div className="grid grid-cols-2 divide-y border border-border/80 bg-card rounded-lg sm:grid-cols-5 sm:divide-y-0 sm:divide-x">
+        <div className="p-3.5 sm:p-4">
+          <p className="font-body text-xs font-medium text-muted-foreground">Assessed</p>
+          <p className="mt-1 font-metric text-xl font-semibold text-foreground tabular-nums sm:text-2xl">
+            {stats.total}
+          </p>
+        </div>
+        <div className="p-3.5 sm:p-4">
+          <p className="font-body text-xs font-medium text-muted-foreground">Round 1 cleared</p>
+          <p className="mt-1 font-metric text-xl font-semibold text-foreground tabular-nums sm:text-2xl">
+            {stats.round1Cleared}
+          </p>
+        </div>
+        <div className="p-3.5 sm:p-4">
+          <p className="font-body text-xs font-medium text-muted-foreground">Shortlisted</p>
+          <p className="mt-1 font-metric text-xl font-semibold text-foreground tabular-nums sm:text-2xl">
+            {stats.shortlisted}
+          </p>
+        </div>
+        <div className="p-3.5 sm:p-4">
+          <p className="font-body text-xs font-medium text-muted-foreground">Offered</p>
+          <p className="mt-1 font-metric text-xl font-semibold text-foreground tabular-nums sm:text-2xl">
+            {stats.selected}
+          </p>
+        </div>
+        <div className="p-3.5 sm:p-4">
+          <p className="font-body text-xs font-medium text-muted-foreground">Batch avg score</p>
+          <p className="mt-1 font-metric text-xl font-semibold text-foreground tabular-nums sm:text-2xl">
+            {stats.avgScore}%
+          </p>
+        </div>
+      </div>
+
+      {/* Candidate Pipeline & Leaderboard */}
+      <div className="rounded-lg border border-border/80 bg-card">
+        {/* Header & Filter Controls */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/80 p-4">
           <div>
-            <h2 className="font-headline text-xl font-bold text-foreground">Candidate Recruitment Pipeline</h2>
+            <h2 className="font-body text-sm font-semibold text-foreground">Candidate Leaderboard</h2>
             <p className="font-body text-xs text-muted-foreground">
-              Review candidates assessed by the AI interview & coding sandbox.
+              Showing {filtered.length} of {candidates.length} candidate assessments
             </p>
           </div>
-        </div>
-
-        {/* Metrics Row */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase">Assessed</span>
-            <p className="mt-1 font-headline text-2xl font-bold text-foreground">{stats.total}</p>
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase">Round 1 Cleared</span>
-            <p className="mt-1 font-headline text-2xl font-bold text-sky-500">{stats.round1Cleared}</p>
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase">Shortlisted</span>
-            <p className="mt-1 font-headline text-2xl font-bold text-primary">{stats.shortlisted}</p>
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase">Selected</span>
-            <p className="mt-1 font-headline text-2xl font-bold text-emerald-500">{stats.selected}</p>
-          </div>
-          <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-            <span className="text-[11px] font-medium text-muted-foreground uppercase">Avg Batch Score</span>
-            <p className="mt-1 font-headline text-2xl font-bold text-foreground">{stats.avgScore}%</p>
-          </div>
-        </div>
-
-        {/* Filter Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3 shadow-soft">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search candidate name, email, or notes..."
-            className="flex-1 min-w-[200px] rounded-xl border border-border bg-background px-3 py-1.5 font-body text-xs text-foreground outline-none focus:border-primary"
-          />
 
           <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search candidate name..."
+              className="h-8 w-44 rounded border border-border/80 bg-background px-2.5 font-body text-xs text-foreground outline-none focus:border-foreground/40 placeholder:text-muted-foreground/60"
+            />
+
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-xl border border-border bg-background px-3 py-1.5 font-body text-xs text-foreground outline-none"
+              className="h-8 rounded border border-border/80 bg-background px-2.5 font-body text-xs text-foreground outline-none"
             >
-              <option value="all">All Statuses</option>
+              <option value="all">All statuses</option>
               <option value="shortlisted">Shortlisted</option>
-              <option value="selected">Selected</option>
-              <option value="round_1_cleared">Round 1 Cleared</option>
-              <option value="applied">Applied / In Review</option>
-              <option value="not_qualified">Not Qualified</option>
+              <option value="selected">Offered</option>
+              <option value="round_1_cleared">Round 1 cleared</option>
+              <option value="applied">Applied</option>
+              <option value="not_qualified">Not qualified</option>
             </select>
 
             {departments.length > 0 && (
               <select
                 value={departmentFilter}
                 onChange={(e) => setDepartmentFilter(e.target.value)}
-                className="rounded-xl border border-border bg-background px-3 py-1.5 font-body text-xs text-foreground outline-none"
+                className="h-8 rounded border border-border/80 bg-background px-2.5 font-body text-xs text-foreground outline-none"
               >
-                <option value="all">All Departments</option>
+                <option value="all">All departments</option>
                 {departments.map((d) => (
                   <option key={d} value={d}>
                     {d}
@@ -352,76 +368,73 @@ export function DriveDetailClient({
           </div>
         </div>
 
-        {/* Candidate Leaderboard Table */}
-        <div className="overflow-x-auto rounded-3xl border border-border bg-card shadow-soft">
-          <table className="w-full border-collapse text-left font-body text-xs">
+        {/* Candidates Table */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-left font-body text-xs">
             <thead>
-              <tr className="border-b border-border bg-muted/40 font-headline text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <th className="p-4">Rank & Candidate</th>
-                <th className="p-4">Department & Batch</th>
-                <th className="p-4 text-center">Overall</th>
-                <th className="p-4 text-center">Coding</th>
-                <th className="p-4 text-center">Comm.</th>
-                <th className="p-4 text-center">Integrity</th>
-                <th className="p-4">Pipeline Status</th>
-                {isManager && <th className="p-4 text-right">Shortlist Action</th>}
+              <tr className="border-b border-border/60 text-muted-foreground">
+                <th className="px-4 py-2.5 font-medium">Rank & Candidate</th>
+                <th className="px-3 py-2.5 font-medium">Department</th>
+                <th className="px-3 py-2.5 text-right font-medium">Overall</th>
+                <th className="px-3 py-2.5 text-right font-medium">Coding</th>
+                <th className="px-3 py-2.5 text-right font-medium">Comm.</th>
+                <th className="px-3 py-2.5 text-right font-medium">Integrity</th>
+                <th className="px-3 py-2.5 font-medium">Status</th>
+                {isManager && <th className="px-4 py-2.5 text-right font-medium">Action</th>}
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="p-8 text-center text-muted-foreground">
-                    No candidates found for this drive filter.
+                  <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
+                    No candidates match this filter.
                   </td>
                 </tr>
               ) : (
                 filtered.map((c, index) => (
-                  <tr key={c.id} className="transition hover:bg-muted/20">
-                    <td className="p-4">
-                      <div className="flex items-center gap-3">
-                        <span className="font-headline font-bold text-muted-foreground w-4 text-center">
-                          #{index + 1}
+                  <tr
+                    key={c.id}
+                    className="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/30"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="font-metric text-muted-foreground w-4 text-center tabular-nums">
+                          {index + 1}
                         </span>
                         <div>
-                          <p className="font-headline font-semibold text-foreground">{c.studentName}</p>
+                          <p className="font-medium text-foreground">{c.studentName}</p>
                           <span className="text-[11px] text-muted-foreground">{c.studentEmail}</span>
                         </div>
                       </div>
                     </td>
 
-                    <td className="p-4">
-                      <p className="font-medium text-foreground">{c.department}</p>
+                    <td className="px-3 py-3">
+                      <p className="text-foreground">{c.department}</p>
                       <span className="text-[11px] text-muted-foreground">{c.batchName}</span>
                     </td>
 
-                    <td className="p-4 text-center">
-                      <span className="font-metric font-bold text-sm text-foreground">
-                        {c.overallScore !== null ? `${c.overallScore}%` : "—"}
-                      </span>
+                    <td className="px-3 py-3 text-right font-metric font-medium text-foreground tabular-nums">
+                      {c.overallScore !== null ? `${c.overallScore}%` : "—"}
                     </td>
 
-                    <td className="p-4 text-center">
-                      <span className="font-metric font-semibold text-primary">
-                        {c.codingScore !== null ? `${c.codingScore}%` : "—"}
-                      </span>
+                    <td className="px-3 py-3 text-right font-metric text-foreground tabular-nums">
+                      {c.codingScore !== null ? `${c.codingScore}%` : "—"}
                     </td>
 
-                    <td className="p-4 text-center">
-                      <span className="font-metric text-foreground">
-                        {c.communicationScore !== null ? `${c.communicationScore}%` : "—"}
-                      </span>
+                    <td className="px-3 py-3 text-right font-metric text-foreground tabular-nums">
+                      {c.communicationScore !== null ? `${c.communicationScore}%` : "—"}
                     </td>
 
-                    <td className="p-4 text-center">
+                    <td className="px-3 py-3 text-right">
                       <button
                         type="button"
                         onClick={() => setAuditCandidate(c)}
-                        className={`rounded-full px-2.5 py-0.5 font-metric text-[11px] font-semibold transition hover:scale-105 cursor-pointer ${
+                        className={`rounded px-1.5 py-0.5 font-metric text-[11px] tabular-nums border ${
                           c.integrityIndex >= 90
-                            ? "bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20"
+                            ? "bg-emerald-50 text-emerald-900 border-emerald-200/60 dark:bg-emerald-950/40 dark:text-emerald-300"
                             : c.integrityIndex >= 75
-                              ? "bg-amber-500/10 text-amber-500 hover:bg-amber-500/20"
-                              : "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                              ? "bg-amber-50 text-amber-900 border-amber-200/60 dark:bg-amber-950/40 dark:text-amber-300"
+                              : "bg-rose-50 text-rose-900 border-rose-200/60 dark:bg-rose-950/40 dark:text-rose-300"
                         }`}
                         title="Click to view candidate proctoring audit telemetry"
                       >
@@ -429,53 +442,45 @@ export function DriveDetailClient({
                       </button>
                     </td>
 
-                    <td className="p-4">
+                    <td className="px-3 py-3">
                       <span
                         className={cn(
-                          "inline-block rounded-full border px-2.5 py-0.5 text-[11px]",
-                          STATUS_STYLES[c.status],
+                          "inline-block rounded px-2 py-0.5 text-[11px] border leading-none capitalize",
+                          STATUS_CLASSES[c.status],
                         )}
                       >
                         {STATUS_LABELS[c.status]}
                       </span>
-                      {c.notes && (
-                        <p className="mt-1 text-[10px] text-muted-foreground max-w-[180px] truncate" title={c.notes}>
-                          💬 {c.notes}
-                        </p>
-                      )}
                     </td>
 
                     {isManager && (
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
                             disabled={updatingId === c.id || isPending}
                             onClick={() => handleStatusChange(c.id, "shortlisted")}
                             className={cn(
-                              "rounded-lg px-2 py-1 text-[10px] font-semibold transition border",
+                              "rounded px-2 py-1 text-[11px] font-medium border transition-colors",
                               c.status === "shortlisted"
-                                ? "bg-primary text-primary-foreground border-primary"
-                                : "bg-background text-foreground hover:border-primary",
+                                ? "bg-foreground text-background border-foreground"
+                                : "bg-background text-foreground border-border/80 hover:bg-muted",
                             )}
-                            title="Shortlist for next round"
                           >
-                            ★ Shortlist
+                            Shortlist
                           </button>
-
                           <button
                             type="button"
                             disabled={updatingId === c.id || isPending}
                             onClick={() => handleStatusChange(c.id, "selected")}
                             className={cn(
-                              "rounded-lg px-2 py-1 text-[10px] font-semibold transition border",
+                              "rounded px-2 py-1 text-[11px] font-medium border transition-colors",
                               c.status === "selected"
                                 ? "bg-emerald-600 text-white border-emerald-600"
-                                : "bg-background text-foreground hover:border-emerald-500",
+                                : "bg-background text-foreground border-border/80 hover:bg-muted",
                             )}
-                            title="Mark as Selected / Offer Given"
                           >
-                            ✓ Select
+                            Offer
                           </button>
                         </div>
                       </td>
@@ -488,37 +493,42 @@ export function DriveDetailClient({
         </div>
       </div>
 
-      {/* Candidate Proctoring Audit Inspection Modal */}
-      {auditCandidate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-border bg-card p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between border-b border-border/60 pb-3">
+      {/* Proctoring Audit Telemetry Modal */}
+      {auditCandidate && candidateAuditSummary && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="w-full max-w-2xl rounded-lg border border-border bg-card p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-border/80 pb-3">
               <div>
-                <span className="font-mono text-[11px] text-muted-foreground uppercase">
-                  Candidate Integrity Telemetry
-                </span>
-                <h3 className="font-headline text-lg font-bold text-foreground">
-                  {auditCandidate.studentName} ({auditCandidate.department} · {auditCandidate.batchName})
-                </h3>
+                <h2 className="font-body text-base font-semibold text-foreground">
+                  Proctoring Telemetry: {auditCandidate.studentName}
+                </h2>
+                <p className="font-body text-xs text-muted-foreground">{auditCandidate.studentEmail}</p>
               </div>
               <button
                 type="button"
                 onClick={() => setAuditCandidate(null)}
-                className="rounded-xl border border-border p-1.5 text-muted-foreground transition hover:bg-muted hover:text-foreground"
+                className="rounded p-1 text-muted-foreground hover:text-foreground"
+                aria-label="Close telemetry modal"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4" />
               </button>
             </div>
 
-            <ProctoringAuditCard summary={candidateAuditSummary} isRecruiterView />
+            <div className="mt-4">
+              <ProctoringAuditCard summary={candidateAuditSummary} />
+            </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="mt-4 flex justify-end border-t border-border/80 pt-3">
               <button
                 type="button"
                 onClick={() => setAuditCandidate(null)}
-                className="btn-primary py-2 px-5 text-xs font-semibold"
+                className="inline-flex h-8 items-center rounded border border-border/80 bg-background px-3 font-body text-xs font-medium text-foreground hover:bg-muted"
               >
-                Close Audit
+                Close
               </button>
             </div>
           </div>

@@ -4,14 +4,13 @@ type StatusTone = "neutral" | "live" | "active" | "warning" | "idle";
 
 const DOT_TONE: Record<StatusTone, string> = {
   neutral: "bg-muted-foreground",
-  live: "bg-destructive animate-pulse",
-  active: "bg-emerald-500",
+  live: "bg-rose-500 animate-pulse",
+  active: "bg-emerald-600",
   warning: "bg-amber-500",
   idle: "bg-muted-foreground/50",
 };
 
-/** Small neutral capsule + one state dot, matching the app shell's light
- * design tokens (not the dark marketing `.bezel` theme). */
+/** Small neutral pill + one state dot, matching taste-skill design tokens */
 export function StatusPill({
   children,
   tone = "neutral",
@@ -24,7 +23,7 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 font-body text-xs font-medium text-foreground shadow-soft",
+        "inline-flex items-center gap-1.5 rounded border border-border/80 bg-background px-2.5 py-1 font-body text-xs font-medium text-foreground",
         className,
       )}
     >
@@ -35,22 +34,19 @@ export function StatusPill({
 }
 
 /**
- * Visible, honest marker that whatever is near it is stub/preview content
- * — a fake question-engine turn or a fixture-derived report — never a
- * real AI result. Used by the interview room and report page per the
- * scope boundary in docs/BUILD_SPEC.md / the Phase 1 provider-key block.
+ * Visible marker that content is preview/calibration stub
  */
 export function PreviewBadge({ className }: { className?: string }) {
   return (
     <span
-      title="This interview runs on a local fixture, not a real AI engine. Questions, transcripts and scores below are sample content, not a real evaluation."
+      title="This interview runs on a benchmark fixture, not a real AI engine."
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1 font-body text-xs font-medium text-amber-700",
+        "inline-flex items-center gap-1.5 rounded border border-amber-200/60 bg-amber-50 px-2.5 py-0.5 font-body text-xs font-medium text-amber-900 dark:border-amber-800/40 dark:bg-amber-950/30 dark:text-amber-300",
         className,
       )}
     >
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
-      Preview — not yet connected to the real engine
+      Preview mode
     </span>
   );
 }
@@ -63,7 +59,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-3xl border border-border bg-card p-6 shadow-soft", className)}>
+    <div className={cn("rounded-lg border border-border/80 bg-card p-5", className)}>
       {children}
     </div>
   );

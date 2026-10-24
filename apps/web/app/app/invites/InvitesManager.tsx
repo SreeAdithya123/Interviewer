@@ -4,6 +4,7 @@ import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { parseCsv, downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
+import StatusBadge from "@/components/app-shell/StatusBadge";
 
 export interface BatchOption {
   id: string;
@@ -25,13 +26,6 @@ export interface InvitationRow {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const FOURTEEN_DAYS_MS = 14 * 24 * 60 * 60 * 1000;
-
-const STATUS_BADGE_CLASS: Record<InvitationRow["status"], string> = {
-  pending: "bg-secondary/10 text-secondary",
-  accepted: "bg-primary/10 text-primary",
-  revoked: "bg-destructive/10 text-destructive",
-  expired: "bg-muted text-muted-foreground",
-};
 
 const ROLE_LABEL: Record<InvitationRow["role"], string> = {
   student: "Student",
@@ -71,14 +65,6 @@ function friendlyInviteError(message: string): string {
   return message;
 }
 
-/**
- * All writes here (insert/update on `invitations`) run through the
- * browser Supabase client under the signed-in college_admin's own
- * session — never a service role — so the real `invitations_insert`/
- * `invitations_update` RLS policies (college_admin + own college) are what
- * actually enforce correctness. This component just builds correct rows
- * and surfaces whatever Postgres/RLS says back.
- */
 export function InvitesManager({
   collegeId,
   batches,
@@ -146,45 +132,47 @@ export function InvitesManager({
 
       <CsvInviteUploader collegeId={collegeId} batches={batches} onCreated={upsertInvitation} />
 
-      <section className="rounded-3xl border border-border bg-card p-6 shadow-soft">
-        <h2 className="font-headline text-lg text-foreground">All invitations</h2>
+      <section className="rounded-lg border border-border/80 bg-card p-5">
+        <h2 className="font-body text-sm font-semibold text-foreground">All sent invitations</h2>
+        <p className="font-body text-xs text-muted-foreground">Historical batch and individual invites</p>
+
         {invitations.length === 0 ? (
-          <p className="mt-4 rounded-2xl border border-dashed border-border bg-background px-4 py-6 text-center font-body text-sm text-muted-foreground">
-            No invitations sent yet.
+          <p className="mt-3 rounded border border-dashed border-border/80 bg-background px-4 py-6 text-center font-body text-xs text-muted-foreground">
+            No invitations sent yet. Use the form above to invite students.
           </p>
         ) : (
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-left font-body text-sm">
+            <table className="w-full text-left font-body text-xs">
               <thead>
-                <tr className="border-b border-border text-muted-foreground">
-                  <th className="py-2 pr-4 font-medium">Email</th>
-                  <th className="py-2 pr-4 font-medium">Role</th>
-                  <th className="py-2 pr-4 font-medium">Batch</th>
-                  <th className="py-2 pr-4 font-medium">Status</th>
-                  <th className="py-2 pr-4 font-medium">Expires</th>
-                  <th className="py-2 font-medium">Action</th>
+                <tr className="border-b border-border/60 text-muted-foreground">
+                  <th className="px-4 py-2.5 font-medium">Email</th>
+                  <th className="px-3 py-2.5 font-medium">Role</th>
+                  <th className="px-3 py-2.5 font-medium">Batch</th>
+                  <th className="px-3 py-2.5 font-medium">Status</th>
+                  <th className="px-3 py-2.5 font-medium">Expires</th>
+                  <th className="px-4 py-2.5 text-right font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {invitations.map((invite) => (
-                  <tr key={invite.id} className="border-b border-border last:border-b-0">
-                    <td className="py-2 pr-4 text-foreground">{invite.email}</td>
-                    <td className="py-2 pr-4 text-foreground">{ROLE_LABEL[invite.role]}</td>
-                    <td className="py-2 pr-4 text-foreground">{invite.batchName ?? "—"}</td>
-                    <td className="py-2 pr-4">
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium capitalize",
-                          STATUS_BADGE_CLASS[invite.status],
-                        )}
-                      >
-                        {invite.status}
-                      </span>
+                  <tr
+                    key={invite.id}
+                    className="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/30"
+                  >
+                    <td className="px-4 py-3 font-medium text-foreground">{invite.email}</td>
+                    <td className="px-3 py-3 text-muted-foreground">{ROLE_LABEL[invite.role]}</td>
+                    <td className="px-3 py-3 text-foreground">{invite.batchName ?? "—"}</td>
+                    <td className="px-3 py-3">
+                      <StatusBadge status={invite.status} />
                     </td>
-                    <td className="py-2 pr-4 text-muted-foreground">
-                      {new Date(invite.expiresAt).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
+                    <td className="px-3 py-3 text-muted-foreground">
+                      {new Date(invite.expiresAt).toLocaleDateString("en-IN", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
                     </td>
-                    <td className="py-2">
+                    <td className="px-4 py-3 text-right">
                       {invite.status === "pending" && (
                         <button
                           type="button"
@@ -192,7 +180,7 @@ export function InvitesManager({
                             await copyToClipboard(inviteLink(invite.token));
                             flashCopied(invite.id);
                           }}
-                          className="font-body text-xs font-medium text-primary hover:underline"
+                          className="font-medium text-foreground underline-offset-4 hover:underline"
                         >
                           {copiedId === invite.id ? "Copied!" : "Copy link"}
                         </button>
@@ -202,13 +190,13 @@ export function InvitesManager({
                           type="button"
                           onClick={() => handleResend(invite)}
                           disabled={busyId === invite.id}
-                          className="font-body text-xs font-medium text-primary hover:underline disabled:opacity-60"
+                          className="font-medium text-foreground underline-offset-4 hover:underline disabled:opacity-60"
                         >
                           {busyId === invite.id ? "Resending..." : copiedId === invite.id ? "Link copied!" : "Resend"}
                         </button>
                       )}
                       {(invite.status === "accepted" || invite.status === "revoked") && (
-                        <span className="font-body text-xs text-muted-foreground">
+                        <span className="text-muted-foreground">
                           {invite.status === "accepted" && invite.acceptedAt
                             ? `Joined ${new Date(invite.acceptedAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`
                             : "—"}
@@ -290,24 +278,24 @@ function SingleInviteForm({
   }
 
   return (
-    <section className="rounded-3xl border border-border bg-card p-6 shadow-soft">
-      <h2 className="font-headline text-lg text-foreground">Create an invite link</h2>
-      <p className="mt-1 font-body text-sm text-muted-foreground">
-        Generates a one-time link for a single student or admin to join your college.
+    <section className="rounded-lg border border-border/80 bg-card p-5">
+      <h2 className="font-body text-sm font-semibold text-foreground">Create an invitation link</h2>
+      <p className="mt-0.5 font-body text-xs text-muted-foreground">
+        Generates a one-time onboarding link for a student or college admin.
       </p>
 
-      <form onSubmit={handleSubmit} className="mt-4 grid gap-3 sm:grid-cols-[2fr_1fr_1fr_auto] sm:items-start">
+      <form onSubmit={handleSubmit} className="mt-3.5 flex flex-wrap items-center gap-2">
         <input
           name="email"
           type="email"
           required
-          placeholder="student@example.edu"
-          className="w-full rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-sm text-foreground outline-none transition-colors focus:border-primary"
+          placeholder="student@sasi.edu"
+          className="h-8 flex-1 min-w-[200px] rounded border border-border/80 bg-background px-3 font-body text-xs text-foreground outline-none focus:border-foreground/40 placeholder:text-muted-foreground/60"
         />
         <select
           name="role"
           defaultValue="student"
-          className="rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-sm text-foreground outline-none transition-colors focus:border-primary"
+          className="h-8 rounded border border-border/80 bg-background px-2.5 font-body text-xs text-foreground outline-none"
         >
           <option value="student">Student</option>
           <option value="college_admin">College admin</option>
@@ -315,24 +303,32 @@ function SingleInviteForm({
         <select
           name="batchId"
           defaultValue=""
-          className="rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-sm text-foreground outline-none transition-colors focus:border-primary"
+          className="h-8 rounded border border-border/80 bg-background px-2.5 font-body text-xs text-foreground outline-none"
         >
-          <option value="">No batch</option>
+          <option value="">No batch assigned</option>
           {batches.map((batch) => (
             <option key={batch.id} value={batch.id}>
               {batch.name}
             </option>
           ))}
         </select>
-        <button type="submit" disabled={submitting} className="btn-primary text-sm disabled:opacity-60">
-          {submitting ? "Creating..." : "Create link"}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="inline-flex h-8 items-center rounded bg-foreground px-3.5 font-body text-xs font-medium text-background hover:bg-foreground/90 disabled:opacity-60"
+        >
+          {submitting ? "Creating..." : "Create & copy link"}
         </button>
       </form>
 
-      {error && <p className="mt-3 rounded-2xl bg-destructive/10 px-4 py-3 font-body text-sm text-destructive">{error}</p>}
+      {error && (
+        <p className="mt-2.5 rounded border border-rose-200 bg-rose-50 px-3 py-2 font-body text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+          {error}
+        </p>
+      )}
       {link && (
-        <p className="mt-3 rounded-2xl bg-primary/10 px-4 py-3 font-body text-sm text-foreground">
-          Link copied to your clipboard: <span className="font-mono text-xs">{link}</span>
+        <p className="mt-2.5 rounded border border-border/80 bg-muted/30 px-3 py-2 font-body text-xs text-foreground">
+          Link copied to clipboard: <span className="font-mono text-[11px] text-muted-foreground">{link}</span>
         </p>
       )}
     </section>
@@ -363,7 +359,7 @@ function CsvInviteUploader({
   function handleTemplateDownload() {
     downloadCsv("invite-template.csv", [
       ["email", "role", "batch"],
-      ["student@example.edu", "student", batches[0]?.name ?? ""],
+      ["student@sasi.edu", "student", batches[0]?.name ?? ""],
     ]);
   }
 
@@ -376,7 +372,7 @@ function CsvInviteUploader({
     const parsed = parseCsv(text);
 
     if (parsed.length === 0) {
-      setFileError("That file has no rows.");
+      setFileError("The selected file has no data rows.");
       setRows([]);
       return;
     }
@@ -387,7 +383,7 @@ function CsvInviteUploader({
     const batchIdx = header.indexOf("batch");
 
     if (emailIdx === -1) {
-      setFileError("CSV must have an \"email\" column (role and batch are optional).");
+      setFileError("CSV must include an 'email' column.");
       setRows([]);
       return;
     }
@@ -402,11 +398,11 @@ function CsvInviteUploader({
       if (!email) {
         errors.push("Missing email");
       } else if (!EMAIL_PATTERN.test(email)) {
-        errors.push("Invalid email");
+        errors.push("Invalid email format");
       } else {
         const key = email.toLowerCase();
         if (seenEmails.has(key)) {
-          errors.push("Duplicate email in this file");
+          errors.push("Duplicate email in file");
         }
         seenEmails.add(key);
       }
@@ -418,7 +414,7 @@ function CsvInviteUploader({
           role = normalized;
         } else {
           role = null;
-          errors.push(`Unknown role "${roleInput}" (use student or college_admin)`);
+          errors.push(`Invalid role '${roleInput}'`);
         }
       }
 
@@ -428,12 +424,12 @@ function CsvInviteUploader({
         if (match) {
           batchId = match.id;
         } else {
-          errors.push(`Unknown batch "${batchInput}"`);
+          errors.push(`Unknown batch '${batchInput}'`);
         }
       }
 
       return {
-        rowNumber: index + 2, // +1 for 0-index, +1 for the header row
+        rowNumber: index + 2,
         email,
         roleInput,
         batchInput,
@@ -489,44 +485,55 @@ function CsvInviteUploader({
   }
 
   return (
-    <section className="rounded-3xl border border-border bg-card p-6 shadow-soft">
+    <section className="rounded-lg border border-border/80 bg-card p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-headline text-lg text-foreground">Upload a CSV</h2>
-          <p className="mt-1 font-body text-sm text-muted-foreground">
-            Columns: <code className="font-mono text-xs">email</code> (required),{" "}
-            <code className="font-mono text-xs">role</code> and <code className="font-mono text-xs">batch</code>{" "}
-            (both optional — role defaults to student, batch must match an existing batch name).
+          <h2 className="font-body text-sm font-semibold text-foreground">Upload CSV batch</h2>
+          <p className="mt-0.5 font-body text-xs text-muted-foreground">
+            Columns: <code className="font-mono text-[11px]">email</code> (required),{" "}
+            <code className="font-mono text-[11px]">role</code> and <code className="font-mono text-[11px]">batch</code> (optional).
           </p>
         </div>
-        <button type="button" onClick={handleTemplateDownload} className="btn-secondary shrink-0 text-xs">
+        <button
+          type="button"
+          onClick={handleTemplateDownload}
+          className="inline-flex h-7 items-center rounded border border-border/80 bg-background px-2.5 font-body text-[11px] font-medium text-foreground hover:bg-muted"
+        >
           Download template
         </button>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-3 flex flex-wrap items-center gap-3">
         <input
           ref={fileInputRef}
           type="file"
           accept=".csv,text/csv"
           onChange={handleFile}
-          className="font-body text-sm text-foreground"
+          className="font-body text-xs text-foreground"
         />
         {rows.length > 0 && (
-          <button type="button" onClick={reset} className="font-body text-xs text-muted-foreground hover:text-foreground">
+          <button
+            type="button"
+            onClick={reset}
+            className="font-body text-xs text-muted-foreground hover:text-foreground"
+          >
             Clear
           </button>
         )}
       </div>
 
-      {fileError && <p className="mt-3 rounded-2xl bg-destructive/10 px-4 py-3 font-body text-sm text-destructive">{fileError}</p>}
+      {fileError && (
+        <p className="mt-2.5 rounded border border-rose-200 bg-rose-50 px-3 py-2 font-body text-xs text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+          {fileError}
+        </p>
+      )}
 
       {rows.length > 0 && (
-        <div className="mt-4 space-y-4">
-          <div className="overflow-x-auto rounded-2xl border border-border">
-            <table className="w-full text-left font-body text-sm">
+        <div className="mt-4 space-y-3">
+          <div className="overflow-x-auto rounded border border-border/80">
+            <table className="w-full text-left font-body text-xs">
               <thead>
-                <tr className="border-b border-border bg-background text-muted-foreground">
+                <tr className="border-b border-border/60 bg-muted/30 text-muted-foreground">
                   <th className="px-3 py-2 font-medium">Row</th>
                   <th className="px-3 py-2 font-medium">Email</th>
                   <th className="px-3 py-2 font-medium">Role</th>
@@ -536,18 +543,18 @@ function CsvInviteUploader({
               </thead>
               <tbody>
                 {rows.map((row) => (
-                  <tr key={row.rowNumber} className="border-b border-border last:border-b-0">
-                    <td className="px-3 py-2 text-muted-foreground">{row.rowNumber}</td>
-                    <td className="px-3 py-2 text-foreground">{row.email || "—"}</td>
-                    <td className="px-3 py-2 text-foreground">{row.roleInput || "student"}</td>
+                  <tr key={row.rowNumber} className="border-b border-border/60 last:border-0">
+                    <td className="px-3 py-2 text-muted-foreground tabular-nums">{row.rowNumber}</td>
+                    <td className="px-3 py-2 font-medium text-foreground">{row.email || "—"}</td>
+                    <td className="px-3 py-2 text-muted-foreground">{row.roleInput || "student"}</td>
                     <td className="px-3 py-2 text-foreground">{row.batchInput || "—"}</td>
                     <td className="px-3 py-2">
                       {row.result === "success" ? (
-                        <span className="font-medium text-primary">Invited</span>
+                        <span className="font-medium text-emerald-800 dark:text-emerald-300">Invited</span>
                       ) : row.result === "error" ? (
-                        <span className="text-destructive">{row.resultMessage}</span>
+                        <span className="text-rose-700 dark:text-rose-400">{row.resultMessage}</span>
                       ) : row.error ? (
-                        <span className="text-destructive">{row.error}</span>
+                        <span className="text-rose-700 dark:text-rose-400">{row.error}</span>
                       ) : (
                         <span className="text-muted-foreground">Ready</span>
                       )}
@@ -562,9 +569,9 @@ function CsvInviteUploader({
             type="button"
             onClick={handleSend}
             disabled={sending || validCount === 0}
-            className="btn-primary text-sm disabled:opacity-60"
+            className="inline-flex h-8 items-center rounded bg-foreground px-3.5 font-body text-xs font-medium text-background hover:bg-foreground/90 disabled:opacity-60"
           >
-            {sending ? "Sending..." : `Send ${validCount} invite${validCount === 1 ? "" : "s"}`}
+            {sending ? "Sending..." : `Send ${validCount} invitation${validCount === 1 ? "" : "s"}`}
           </button>
         </div>
       )}
