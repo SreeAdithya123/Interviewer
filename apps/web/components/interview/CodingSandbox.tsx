@@ -26,6 +26,7 @@ interface CodingSandboxProps {
   initialLanguage?: SupportedLanguage;
   onCodeChange?: (code: string, language: SupportedLanguage) => void;
   defaultTestCases?: TestCase[];
+  onPaste?: (pastedText: string) => void;
 }
 
 const DEFAULT_SAMPLE_TEST_CASES: TestCase[] = [
@@ -53,6 +54,7 @@ export function CodingSandbox({
   initialLanguage = "python",
   onCodeChange,
   defaultTestCases = DEFAULT_SAMPLE_TEST_CASES,
+  onPaste,
 }: CodingSandboxProps) {
   const [language, setLanguage] = useState<SupportedLanguage>(initialLanguage);
   const [code, setCode] = useState<string>(() => {
@@ -175,6 +177,7 @@ export function CodingSandbox({
             value={code}
             onChange={setCode}
             fontSize={fontSize}
+            onPaste={onPaste}
           />
         </div>
 

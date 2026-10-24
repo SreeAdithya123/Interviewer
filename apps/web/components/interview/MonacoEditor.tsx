@@ -18,6 +18,7 @@ interface MonacoEditorProps {
   onChange: (value: string) => void;
   fontSize?: number;
   readOnly?: boolean;
+  onPaste?: (pastedText: string) => void;
 }
 
 export function MonacoEditor({
@@ -26,6 +27,7 @@ export function MonacoEditor({
   onChange,
   fontSize = 14,
   readOnly = false,
+  onPaste,
 }: MonacoEditorProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -42,6 +44,16 @@ export function MonacoEditor({
       cursorBlinking: "smooth",
       smoothScrolling: true,
     });
+
+    if (onPaste) {
+      editor.onDidPaste((e) => {
+        const model = editor.getModel();
+        if (model) {
+          const pastedText = model.getValueInRange(e.range);
+          onPaste(pastedText);
+        }
+      });
+    }
   };
 
   if (!mounted) {

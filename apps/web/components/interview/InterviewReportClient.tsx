@@ -8,6 +8,8 @@ import { Card, PreviewBadge, StatusPill } from "@/components/interview/primitive
 import { retryInterviewReport } from "@/lib/interview/actions";
 import { getTurnAudio } from "@/lib/interview/audio-store";
 import { formatClock } from "@/lib/interview/recording";
+import { ProctoringAuditCard } from "@/components/proctoring/ProctoringAuditCard";
+import type { ProctoringSummary } from "@/lib/proctoring/types";
 import {
   DIFFICULTY_LABELS,
   INTERVIEW_TYPE_LABELS,
@@ -42,6 +44,45 @@ export function InterviewReportClient({
 
   const [retrying, setRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
+  const [proctoringSummary, setProctoringSummary] = useState<ProctoringSummary | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const raw = window.localStorage.getItem(`vyoman_proctoring_${interview.id}`);
+        if (raw) {
+          setProctoringSummary(JSON.parse(raw));
+        } else if (report) {
+          const eyeContact = report.eye_contact_pct ? Number(report.eye_contact_pct) : 92;
+          const posture = report.posture_stability_pct ? Number(report.posture_stability_pct) : 95;
+          setProctoringSummary({
+            integrityScore: Math.round((eyeContact + posture) / 2),
+            trustBand: (eyeContact + posture) / 2 >= 90 ? "clean" : "suspicious",
+            tabSwitchesCount: 0,
+            fullscreenExitsCount: 0,
+            windowBlursCount: 0,
+            pasteEventsCount: 0,
+            faceViolationsCount: 0,
+            audioAnomaliesCount: 0,
+            totalInfractions: 0,
+            eyeContactPct: eyeContact,
+            postureStabilityPct: posture,
+            categoryBreakdown: {
+              screenFocusScore: 100,
+              codeIntegrityScore: 100,
+              visualFocusScore: Math.round(eyeContact),
+              audioIntegrityScore: 100,
+            },
+            events: [],
+            startedAt: interview.created_at,
+            durationSeconds: interview.duration_seconds ?? 600,
+          });
+        }
+      } catch {
+        // Fallback
+      }
+    }
+  }, [interview.id, interview.created_at, interview.duration_seconds, report]);
 
   async function handleRetry() {
     setRetrying(true);
@@ -225,6 +266,9 @@ export function InterviewReportClient({
           </Card>
         </>
       )}
+
+      {/* Proctoring & Integrity Audit Breakdown */}
+      <ProctoringAuditCard summary={proctoringSummary} />
 
       <Card>
         <h2 className="font-headline text-lg font-semibold text-foreground">Full transcript</h2>

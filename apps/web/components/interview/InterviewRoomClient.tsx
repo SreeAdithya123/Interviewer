@@ -12,6 +12,11 @@ import dynamic from "next/dynamic";
 import { DIFFICULTY_LABELS, INTERVIEW_TYPE_LABELS, STAGE_LABELS } from "@/lib/interview/types";
 import type { Interview, InterviewStage } from "@/lib/interview/types";
 import type { SupportedLanguage } from "@/lib/sandbox/types";
+import { useProctoring } from "@/lib/proctoring/useProctoring";
+import type { ProctoringEventType } from "@/lib/proctoring/types";
+import FaceProctor from "@/components/proctoring/FaceProctor";
+import ProctoringWarningModal from "@/components/proctoring/ProctoringWarningModal";
+import { ShieldCheck, ShieldAlert, Maximize2, Minimize2 } from "lucide-react";
 
 const CodingSandbox = dynamic(
   () => import("@/components/interview/CodingSandbox"),
@@ -87,6 +92,24 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const candidateCodeRef = useRef<string>("");
   const codeLanguageRef = useRef<SupportedLanguage>("python");
 
+  // Real-time Proctoring & Placement Integrity Guardian
+  const proctoring = useProctoring({
+    enabled: true,
+  });
+
+  const handleVisualInfraction = useCallback(
+    (type: ProctoringEventType, description: string) => {
+      const label =
+        type === "multiple_faces_detected"
+          ? "Multiple Faces in Frame"
+          : type === "looking_away"
+            ? "Gaze Averted / Looking Away"
+            : "Candidate Not in Frame";
+      proctoring.recordEvent(type, label, description, "high");
+    },
+    [proctoring],
+  );
+
   const handleCodeChange = useCallback((newCode: string, lang: SupportedLanguage) => {
     setCandidateCode(newCode);
     setCodeLanguage(lang);
@@ -152,7 +175,19 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
       void overrideDurationSeconds; // kept for the 25-minute-cap call site below; the engine times itself
 
       try {
-        await finishInterview(interviewId);
+        const summary = proctoring.getFinalSummary();
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(`vyoman_proctoring_${interviewId}`, JSON.stringify(summary));
+          } catch {
+            // Storage quota fallback
+          }
+        }
+
+        await finishInterview(interviewId, {
+          eyeContactPct: summary.eyeContactPct,
+          postureStabilityPct: summary.postureStabilityPct,
+        });
         setPhase("done");
         router.push(`/app/interview/${interviewId}/report`);
       } catch (err) {
@@ -434,7 +469,10 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   }
 
   return (
-    <div className={`space-y-6 ${layoutMode === "split" ? "max-w-7xl mx-auto" : "max-w-3xl mx-auto"}`}>
+    <div
+      onContextMenu={proctoring.handleContextMenu}
+      className={`space-y-6 ${layoutMode === "split" ? "max-w-7xl mx-auto" : "max-w-3xl mx-auto"}`}
+    >
       {/* Top Header Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
@@ -448,7 +486,46 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+          {/* Proctoring Status Pill */}
+          <div
+            className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold ${
+              proctoring.warningCount === 0
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500"
+                : "border-amber-500/30 bg-amber-500/10 text-amber-500"
+            }`}
+          >
+            {proctoring.warningCount === 0 ? (
+              <ShieldCheck className="h-3.5 w-3.5" />
+            ) : (
+              <ShieldAlert className="h-3.5 w-3.5" />
+            )}
+            <span>
+              {proctoring.warningCount === 0
+                ? "Proctor: Clean"
+                : `Flags: ${proctoring.warningCount}`}
+            </span>
+          </div>
+
+          {/* Fullscreen Toggle */}
+          <button
+            type="button"
+            onClick={proctoring.isFullscreen ? proctoring.exitFullscreen : proctoring.requestFullscreen}
+            className="inline-flex items-center gap-1 rounded-xl border border-border bg-card px-2.5 py-1 font-body text-xs font-medium text-foreground transition hover:bg-muted"
+            title={proctoring.isFullscreen ? "Exit Fullscreen" : "Lock Fullscreen (Proctored)"}
+          >
+            {proctoring.isFullscreen ? (
+              <>
+                <Minimize2 className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="hidden md:inline">Fullscreen</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="h-3.5 w-3.5 text-primary" />
+                <span className="hidden md:inline">Lock Screen</span>
+              </>
+            )}
+          </button>
           {/* Layout Mode Switcher */}
           <div className="flex items-center rounded-xl border border-border bg-card p-1 text-xs shadow-soft">
             <button
@@ -500,6 +577,13 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Left Column: Voice & Question Dialogue */}
           <div className="lg:col-span-5 space-y-6">
+            {/* Live AI Face Proctor Preview */}
+            <FaceProctor
+              onVisualInfraction={handleVisualInfraction}
+              isCompact
+              className="h-44 w-full"
+            />
+
             <Card>
               {phase === "starting" && <StatusLine text="Starting your interview..." />}
               {phase === "thinking" && <StatusLine text="Preparing the next question..." pulse />}
@@ -587,6 +671,7 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
             <CodingSandbox
               initialLanguage={codeLanguage}
               onCodeChange={handleCodeChange}
+              onPaste={proctoring.handlePasteEvent}
             />
           </div>
         </div>
@@ -626,12 +711,17 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
             <CodingSandbox
               initialLanguage={codeLanguage}
               onCodeChange={handleCodeChange}
+              onPaste={proctoring.handlePasteEvent}
             />
           </div>
         </div>
       ) : (
         /* Voice-only view */
         <div className="space-y-6">
+          <FaceProctor
+            onVisualInfraction={handleVisualInfraction}
+            className="h-52 w-full max-w-sm mx-auto"
+          />
           <Card>
             {phase === "starting" && <StatusLine text="Starting your interview..." />}
             {phase === "thinking" && <StatusLine text="Preparing the next question..." pulse />}
@@ -741,6 +831,16 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
           End interview now
         </button>
       </div>
+
+      {/* Proctoring Infraction & Focus Warning Modal */}
+      <ProctoringWarningModal
+        warning={proctoring.activeWarning}
+        warningCount={proctoring.warningCount}
+        maxWarnings={proctoring.maxWarningsBeforeFlag}
+        onDismiss={proctoring.dismissWarning}
+        onRequestFullscreen={proctoring.requestFullscreen}
+        isFullscreen={proctoring.isFullscreen}
+      />
     </div>
   );
 }

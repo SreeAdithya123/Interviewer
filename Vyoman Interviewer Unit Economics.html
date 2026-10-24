@@ -1,0 +1,581 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Vyoman Interviewer Unit Economics</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=Inter:wght@400;500;600;700;800&display=swap">
+<style>
+  /* Layout concept: a single-column editorial report -- hero verdict,
+     then four scroll sections (what costs what / why interviews cost
+     what they do / platform bill / the 1,000-student P&L) -- each a
+     short prose lede followed by one chart, ending in a sourced ledger. */
+  :root {
+    --bg: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --line: #e1e0d9;
+    --accent: #2a78d6;
+    --accent-2: #eb6834;
+    --good: #0ca30c;
+    --warn: #c98500;
+    --bad: #e34948;
+    --serif: "Source Serif 4", Georgia, serif;
+    --sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7;
+      --muted: #898781; --line: #2c2c2a; --accent: #3987e5; --accent-2: #d95926;
+      --good: #0ca30c; --warn: #c98500; --bad: #e66767; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7;
+    --muted: #898781; --line: #2c2c2a; --accent: #3987e5; --accent-2: #d95926;
+    --good: #0ca30c; --warn: #c98500; --bad: #e66767; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--sans);
+    margin: 0; padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    line-height: 1.5;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; padding-block: 48px 80px; }
+  a { color: var(--accent); }
+  h1, h2, h3 { font-family: var(--serif); font-weight: 600; text-wrap: balance; margin: 0; }
+  .eyebrow {
+    font-family: var(--sans); font-size: 12px; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 10px;
+  }
+  header.top { margin-bottom: 8px; }
+  h1 { font-size: clamp(28px, 5vw, 40px); }
+  .sub { color: var(--ink-2); font-size: 16px; margin-top: 10px; max-width: 62ch; }
+  .meta-row {
+    display: flex; gap: 18px; flex-wrap: wrap; margin-top: 18px; padding-top: 18px;
+    border-top: 1px solid var(--line); font-size: 13px; color: var(--muted);
+  }
+  .meta-row b { color: var(--ink-2); font-weight: 600; }
+
+  section { margin-top: 56px; }
+  .sec-head { margin-bottom: 18px; }
+  .sec-head h2 { font-size: clamp(20px, 3vw, 26px); }
+  .lede { color: var(--ink-2); font-size: 15px; max-width: 66ch; margin-top: 8px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 22px; box-shadow: 0 1px 2px rgba(11,11,11,0.04);
+  }
+
+  /* hero stat row */
+  .hero-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 28px; }
+  .stat { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 18px 16px; }
+  .stat .label { font-size: 12px; color: var(--muted); font-weight: 600; letter-spacing: 0.02em; }
+  .stat .value { font-family: var(--serif); font-size: clamp(26px, 4vw, 34px); margin-top: 6px; line-height: 1.1; }
+  .stat .value.good { color: var(--good); }
+  .stat .foot { font-size: 12.5px; color: var(--ink-2); margin-top: 6px; }
+  @media (max-width: 640px) { .hero-grid { grid-template-columns: 1fr; } }
+
+  /* flag / callout boxes */
+  .flag {
+    border-radius: 12px; padding: 14px 16px; font-size: 13.5px; line-height: 1.55;
+    border: 1px solid; margin-top: 16px;
+  }
+  .flag.assume { background: color-mix(in srgb, var(--accent) 8%, var(--surface)); border-color: color-mix(in srgb, var(--accent) 30%, var(--line)); }
+  .flag.warn { background: color-mix(in srgb, var(--warn) 10%, var(--surface)); border-color: color-mix(in srgb, var(--warn) 35%, var(--line)); }
+  .flag b { color: var(--ink); }
+  .pill {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.04em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 999px; margin-right: 6px;
+    vertical-align: 1px;
+  }
+  .pill.real { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good); }
+  .pill.assumed { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); }
+  .pill.placeholder { background: color-mix(in srgb, var(--bad) 16%, transparent); color: var(--bad); }
+  .pill.est { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+
+  svg text { font-family: var(--sans); fill: var(--ink-2); }
+  .chart-title { font-size: 13px; font-weight: 600; fill: var(--ink); }
+  .axis-label { font-size: 11px; fill: var(--muted); }
+  .bar-label { font-size: 12px; font-weight: 600; fill: var(--ink); }
+  .bar-sub { font-size: 10.5px; fill: var(--muted); }
+  .gridline { stroke: var(--line); stroke-width: 1; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin-top: 10px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.total td { font-weight: 700; border-top: 2px solid var(--line); border-bottom: none; }
+  tr.sub td { color: var(--ink-2); }
+  .table-wrap { overflow-x: auto; }
+
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 10px; font-size: 12.5px; color: var(--ink-2); }
+  .legend .dot { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+
+  footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--line); }
+  footer h3 { font-size: 15px; margin-bottom: 10px; }
+  .sources { font-size: 12.5px; color: var(--ink-2); line-height: 1.7; }
+  .sources li { margin-bottom: 4px; }
+  .sources code { background: color-mix(in srgb, var(--ink) 6%, transparent); padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+
+  .tooltip {
+    position: absolute; pointer-events: none; background: var(--ink); color: var(--bg);
+    font-size: 12px; padding: 6px 9px; border-radius: 8px; opacity: 0; transition: opacity 0.1s;
+    max-width: 220px; z-index: 5; line-height: 1.4;
+  }
+  .chart-wrap { position: relative; }
+</style>
+
+<div class="wrap">
+
+  <header class="top">
+    <p class="eyebrow">Unit Economics &amp; Platform Cost Report</p>
+    <h1>What Vyoman Interviewer actually costs to run</h1>
+    <p class="sub">Every number below with a <span class="pill real">real</span> tag comes from <code>pricing.yaml</code>, the live Supabase project, or a documented go/no-go test. Numbers tagged <span class="pill assumed">assumed</span> are a stated usage model, not a measurement. Numbers tagged <span class="pill placeholder">placeholder</span> are seed data the project's own spec says isn't final pricing.</p>
+    <div class="meta-row">
+      <div><b>As of</b> 2026-10-23</div>
+      <div><b>Engine</b> services/engine/app/config/pricing.yaml, models.yaml</div>
+      <div><b>Live project</b> rhynjyamkeqsdvymmzhc.supabase.co</div>
+      <div><b>INR/USD</b> 95.029 (pricing.yaml, captured 2026-10-18)</div>
+    </div>
+  </header>
+
+  <div class="hero-grid">
+    <div class="stat">
+      <div class="label">COST PER INTERVIEW, MEASURED</div>
+      <div class="value good">₹3.53</div>
+      <div class="foot">vs a ₹15 budget ceiling &mdash; 76% under, confirmed across 9 real interviews (go/no-go checkpoint)</div>
+    </div>
+    <div class="stat">
+      <div class="label">NET MARGIN AT 1,000 STUDENTS</div>
+      <div class="value good">91.6%</div>
+      <div class="foot">On the real ₹499/month self-pay plan, after AI costs, platform bills, and Razorpay's cut</div>
+    </div>
+    <div class="stat">
+      <div class="label">NET PROFIT / MONTH, 1,000 STUDENTS</div>
+      <div class="value">₹4,57,190</div>
+      <div class="foot">₹499,000 revenue &minus; ₹41,810 total cost, modeled below</div>
+    </div>
+  </div>
+
+  <!-- SECTION 1: per-feature cost -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">01 &middot; Per-feature cost</p>
+      <h2>Five features, five very different price tags</h2>
+      <p class="lede">Every provider call anywhere in the product writes one <code>usage_events</code> row with its real cost in paise. These are the live averages read back from that table &mdash; not list prices, what actually got charged.</p>
+    </div>
+    <div class="card chart-wrap">
+      <div id="chart-features"></div>
+    </div>
+    <div class="flag assume"><span class="pill real">real</span> Averages from the live project's <code>usage_events</code> table. Sample sizes vary a lot &mdash; interview cost rests on a 9-interview go/no-go test built for exactly this purpose; resume scan (n=6) and bullet rewrite (n=2) are real but thin samples from manual verification, not a volume test. Treat those two as directionally right, not statistically tight.</div>
+  </section>
+
+  <!-- SECTION 2: interview breakdown -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">02 &middot; Why the interview costs what it costs</p>
+      <h2>Speech, not the LLM, is the bill</h2>
+      <p class="lede">An interview calls three providers: Gemini for in-stage follow-ups, Groq for answer transcription, Sarvam for both answer-transcription fallback and every question's spoken audio. Sarvam alone is three-quarters of the per-interview cost.</p>
+    </div>
+    <div class="card chart-wrap">
+      <div id="chart-interview-split"></div>
+    </div>
+  </section>
+
+  <!-- SECTION 3: platform bill -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">03 &middot; The platform bill</p>
+      <h2>Infrastructure is flat, not per-student</h2>
+      <p class="lede">Unlike AI calls, hosting is mostly a fixed monthly bill that doesn't move much between 100 students and 1,000 &mdash; each vendor's free tier or base plan absorbs this scale almost entirely.</p>
+    </div>
+    <div class="card chart-wrap">
+      <div id="chart-platform"></div>
+    </div>
+    <div class="flag warn"><span class="pill est">estimated</span> Compute Run, Resend and Upstash land inside their free tiers at 1,000 students on the usage model below &mdash; shown as ₹0, with the headroom noted. The one line that isn't flat: <b>R2 answer-audio storage compounds every month</b> since clips are kept for report playback and nothing expires them yet.</div>
+    <div class="card chart-wrap" style="margin-top:14px;">
+      <div id="chart-r2-growth"></div>
+    </div>
+  </section>
+
+  <!-- SECTION 4: the 1000-student model -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">04 &middot; The 1,000-student model</p>
+      <h2>From ₹499/month to a P&amp;L</h2>
+      <p class="lede">This is a model, not a measurement &mdash; the live project has 3 real test accounts, not 1,000 paying students. The usage pattern below is a stated assumption built from each plan's real quota; everything downstream of it (cost, revenue, margin) follows mechanically from real per-unit prices.</p>
+    </div>
+
+    <div class="flag assume">
+      <span class="pill assumed">assumed usage, per student per month</span><br>
+      6 interviews (of a 15/month quota) &middot; 8 resume scans (of 30) &middot; 10 bullet rewrites &middot; 20 prep-assistant chat messages.
+    </div>
+
+    <div class="card chart-wrap" style="margin-top:16px;">
+      <div id="chart-waterfall"></div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Line</th><th class="num">Per student / month</th><th class="num">1,000 students / month</th><th class="num">Per student / year</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Revenue (Student Practice Pass, ₹499/mo)</td><td class="num">₹499.00</td><td class="num">₹4,99,000</td><td class="num">₹5,988</td></tr>
+          <tr class="sub"><td>&minus; AI / provider cost</td><td class="num">₹26.07</td><td class="num">₹26,070</td><td class="num">₹312.84</td></tr>
+          <tr class="sub"><td>&minus; Platform &amp; infrastructure</td><td class="num">₹3.97</td><td class="num">₹3,968</td><td class="num">₹47.62*</td></tr>
+          <tr class="sub"><td>&minus; Razorpay fee (2.36% of revenue)</td><td class="num">₹11.78</td><td class="num">₹11,776</td><td class="num">₹141.31</td></tr>
+          <tr class="total"><td>Net profit</td><td class="num">₹457.19</td><td class="num">₹4,57,190</td><td class="num">₹5,486.23*</td></tr>
+          <tr class="sub"><td>Net margin</td><td class="num">91.6%</td><td class="num">91.6%</td><td class="num">91.6%*</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="flag warn" style="margin-top:10px;"><span class="pill est">estimated</span> *Annualized at month-1's run rate. R2 storage keeps growing (see §03), so a real 12th month costs more than month-1 ×12 &mdash; roughly ₹12,900/month in R2 storage alone by month 12 if nothing is ever deleted, versus ~₹1,100 in month 1.</div>
+  </section>
+
+  <!-- SECTION 5: pricing reality check -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">05 &middot; On pricing itself</p>
+      <h2>One real plan, one that doesn't add up yet</h2>
+      <p class="lede">Two plans are seeded in the live <code>plans</code> table. One prices sensibly against real cost. The other is almost certainly a placeholder &mdash; BUILD_SPEC.md itself calls college pricing "placeholders to fill in," and the number confirms it.</p>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Plan</th><th class="num">Price</th><th class="num">Interview quota</th><th class="num">Scan quota</th><th>Read</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Student Practice Pass <span class="pill real">real</span></td>
+            <td class="num">₹499 / month</td>
+            <td class="num">15</td>
+            <td class="num">30</td>
+            <td>Covers ~19&times; its own per-student AI cost (₹26.07) even at full quota use.</td>
+          </tr>
+          <tr>
+            <td>College Batch Institutional <span class="pill placeholder">placeholder</span></td>
+            <td class="num">₹1,500 / year</td>
+            <td class="num">5,000</td>
+            <td class="num">10,000</td>
+            <td>5,000 interviews at ₹3.53 each is ₹17,650 in AI cost alone &mdash; <b>12&times; the plan's entire annual price</b>, before any other cost. This is seed data, not a priced plan.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="flag assume" style="margin-top:14px;">
+      <span class="pill assumed">illustrative, not official</span> A college licensing 1,000 student seats at a 50% bulk discount off the retail annual rate (₹5,988/yr &rarr; ₹2,994/seat/yr) would bring in ₹29,94,000/year against an estimated ₹3,76,200/year in AI + platform cost for that cohort (1,000 &times; ₹312.84 AI + a share of fixed infra) &mdash; an 87% margin. This is a worked example to show the math holds at a realistic discount, not a recommended price.
+    </div>
+  </section>
+
+  <!-- SECTION 6: reference pricing -->
+  <section>
+    <div class="sec-head">
+      <p class="eyebrow">06 &middot; Reference</p>
+      <h2>Every per-unit rate this model uses</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Provider</th><th>Used for</th><th class="num">Rate</th></tr></thead>
+        <tbody id="rate-table"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <h3>Sources</h3>
+    <ul class="sources">
+      <li><code>services/engine/app/config/pricing.yaml</code> &mdash; every provider unit rate, confirmed against each provider's own pricing page 2026-10-18.</li>
+      <li><code>docs/PROGRESS.md</code>, Phase 1 CHECKPOINT &mdash; the real ₹3.53 mean / ₹3.46 median cost-per-interview result (9 real interviews, real Groq/Sarvam/Gemini/R2 calls).</li>
+      <li><code>docs/BUILD_SPEC.md</code> Part 1/4.9 &mdash; the ₹15/interview budget target and the "pricing is a placeholder" framing.</li>
+      <li>Live Supabase project <code>rhynjyamkeqsdvymmzhc</code>: <code>usage_events</code> (per-feature averages), <code>plans</code> (seeded prices and quotas) &mdash; queried directly for this report.</li>
+      <li><a href="https://developers.cloudflare.com/workers/platform/pricing/" target="_blank">Cloudflare Workers pricing</a> &mdash; Paid plan base fee and included usage.</li>
+      <li>Supabase Pro plan figures via third-party pricing roundups current as of October 2026 (Supabase's own pricing page could not be reached directly &mdash; treat as approximate).</li>
+      <li><a href="https://cloud.google.com/run/pricing" target="_blank">Google Cloud Run pricing</a> &mdash; active vCPU/GiB-second rates and free-tier allowances.</li>
+      <li>Resend and Razorpay figures via their own pricing posts and third-party reviews current as of October 2026.</li>
+    </ul>
+  </footer>
+</div>
+
+<div class="tooltip" id="tt"></div>
+
+<script>
+(function () {
+  "use strict";
+  var NS = "http://www.w3.org/2000/svg";
+  var tt = document.getElementById("tt");
+
+  function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+  function el(tag, attrs) {
+    var e = document.createElementNS(NS, tag);
+    for (var k in attrs) e.setAttribute(k, attrs[k]);
+    return e;
+  }
+  function fmtRupee(n, decimals) {
+    decimals = decimals === undefined ? 2 : decimals;
+    return "₹" + n.toLocaleString("en-IN", { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  }
+  function showTip(evt, html) {
+    tt.innerHTML = html;
+    tt.style.opacity = 1;
+    var r = evt.currentTarget.closest(".chart-wrap").getBoundingClientRect();
+    tt.style.left = (evt.clientX - r.left + 14) + "px";
+    tt.style.top = (evt.clientY - r.top - 10) + "px";
+  }
+  function hideTip() { tt.style.opacity = 0; }
+
+  // ---------------------------------------------------------------
+  // Chart 1: horizontal bar, per-feature average cost (log-ish via
+  // sqrt scale so the tiny embedding bar is still visible next to tts)
+  // ---------------------------------------------------------------
+  function drawFeatureChart() {
+    var data = [
+      { name: "Interview (full)", value: 3.53, n: 9, note: "go/no-go mean, STT+TTS+LLM" },
+      { name: "Resume scan", value: 0.1717, n: 6 },
+      { name: "Prep-assistant chat", value: 0.1655, n: 33 },
+      { name: "Bullet rewrite", value: 0.02, n: 2 },
+      { name: "Text embedding", value: 0.0003, n: 94 }
+    ];
+    var host = document.getElementById("chart-features");
+    var W = 800, H = 230, left = 150, right = 90, top = 10, rowH = 36;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: "100%", height: H, role: "img", "aria-label": "Average real cost per feature use" });
+    var maxV = Math.sqrt(data[0].value);
+    var plotW = W - left - right;
+
+    data.forEach(function (d, i) {
+      var y = top + i * rowH;
+      var w = Math.max(2, (Math.sqrt(d.value) / maxV) * plotW);
+      var g = el("g", {});
+      var label = el("text", { x: left - 10, y: y + rowH / 2 - 7, "text-anchor": "end", class: "bar-label" });
+      label.textContent = d.name;
+      var sub = el("text", { x: left - 10, y: y + rowH / 2 + 8, "text-anchor": "end", class: "bar-sub" });
+      sub.textContent = "n=" + d.n;
+      var rect = el("rect", {
+        x: left, y: y + 4, width: w, height: rowH - 14, rx: 5,
+        fill: i === 0 ? css("--accent") : css("--accent-2"), opacity: i === 0 ? 1 : 0.85,
+        style: "cursor:pointer"
+      });
+      var val = el("text", { x: left + w + 10, y: y + rowH / 2 - 1, class: "bar-label" });
+      val.textContent = fmtRupee(d.value, d.value < 0.01 ? 4 : d.value < 1 ? 3 : 2);
+      rect.addEventListener("mousemove", function (e) {
+        showTip(e, "<b>" + d.name + "</b><br>" + fmtRupee(d.value, 4) + " avg, n=" + d.n + (d.note ? "<br>" + d.note : ""));
+      });
+      rect.addEventListener("mouseleave", hideTip);
+      g.appendChild(label); g.appendChild(sub); g.appendChild(rect); g.appendChild(val);
+      svg.appendChild(g);
+    });
+    host.appendChild(svg);
+  }
+
+  // ---------------------------------------------------------------
+  // Chart 2: stacked single bar, interview cost by provider
+  // ---------------------------------------------------------------
+  function drawInterviewSplit() {
+    var parts = [
+      { name: "Sarvam (STT fallback + TTS)", value: 2.69, color: css("--accent") },
+      { name: "Gemini (follow-ups + eval)", value: 0.42, color: css("--accent-2") },
+      { name: "Groq (STT primary)", value: 0.42, color: "#1baf7a" }
+    ];
+    var total = parts.reduce(function (a, b) { return a + b.value; }, 0);
+    var budget = 15;
+    var host = document.getElementById("chart-interview-split");
+    var W = 800, H = 170, left = 16, right = 16, barY = 60, barH = 46;
+    var plotW = W - left - right;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: "100%", height: H, role: "img", "aria-label": "Interview cost by provider against the budget ceiling" });
+
+    svg.appendChild(el("text", { x: left, y: 20, class: "chart-title" })).textContent = "₹3.53 actual vs ₹15.00 budget ceiling";
+
+    var scale = plotW / budget;
+    // budget ceiling track
+    svg.appendChild(el("rect", { x: left, y: barY, width: plotW, height: barH, rx: 8, fill: css("--line"), opacity: 0.5 }));
+    var x = left;
+    parts.forEach(function (p) {
+      var w = p.value * scale;
+      var rect = el("rect", { x: x, y: barY, width: w, height: barH, fill: p.color, style: "cursor:pointer" });
+      rect.addEventListener("mousemove", function (e) {
+        showTip(e, "<b>" + p.name + "</b><br>" + fmtRupee(p.value) + " (" + Math.round(p.value / total * 100) + "% of interview cost)");
+      });
+      rect.addEventListener("mouseleave", hideTip);
+      svg.appendChild(rect);
+      x += w;
+    });
+    // rounded mask ends
+    svg.appendChild(el("rect", { x: left, y: barY, width: Math.min(8, total * scale), height: barH, rx: 8, fill: parts[0].color }));
+    // ceiling marker
+    var ceilX = left + budget * scale;
+    svg.appendChild(el("line", { x1: ceilX, x2: ceilX, y1: barY - 10, y2: barY + barH + 10, stroke: css("--muted"), "stroke-width": 1.5, "stroke-dasharray": "3,3" }));
+    svg.appendChild(el("text", { x: ceilX, y: barY - 16, "text-anchor": "end", class: "axis-label" })).textContent = "budget ceiling →";
+    svg.appendChild(el("text", { x: left, y: barY + barH + 30, class: "axis-label" })).textContent = "Headroom to ceiling: " + fmtRupee(budget - total) + " (" + Math.round((budget - total) / budget * 100) + "% unused)";
+
+    host.appendChild(svg);
+    var legend = document.createElement("div");
+    legend.className = "legend";
+    parts.forEach(function (p) {
+      var d = document.createElement("span");
+      d.innerHTML = '<span class="dot" style="background:' + p.color + '"></span>' + p.name + " · " + fmtRupee(p.value) + " (" + Math.round(p.value / total * 100) + "%)";
+      legend.appendChild(d);
+    });
+    host.appendChild(legend);
+  }
+
+  // ---------------------------------------------------------------
+  // Chart 3: platform/infra bars
+  // ---------------------------------------------------------------
+  function drawPlatformChart() {
+    var data = [
+      { name: "Supabase Pro", value: 2376, note: "$25/mo · 8GB DB, 100k MAU, 250GB egress, 100GB storage included" },
+      { name: "R2 answer-audio storage", value: 1077, note: "Month 1 only — grows every month, see chart below" },
+      { name: "Cloudflare Workers Paid", value: 475, note: "$5/mo base · 10M requests + 30M CPU-ms included" },
+      { name: "R2 requests (class A/B)", value: 40, note: "Uploads + downloads of answer audio" },
+      { name: "Cloud Run", value: 0, note: "Within Google's free tier at this volume (~127k requests/mo, well under the 2M free)" },
+      { name: "Resend", value: 0, note: "~2,000 OTP emails/mo, within the 3,000/mo free tier" },
+      { name: "Upstash Redis", value: 0, note: "~34,000 rate-limit commands/mo, within the 500k/mo free tier" }
+    ];
+    var host = document.getElementById("chart-platform");
+    var W = 800, H = data.length * 34 + 30, left = 190, right = 80, top = 10, rowH = 34;
+    var plotW = W - left - right;
+    var maxV = data[0].value;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: "100%", height: H, role: "img", "aria-label": "Monthly platform and infrastructure cost by vendor, at 1,000 students" });
+    data.forEach(function (d, i) {
+      var y = top + i * rowH;
+      var w = Math.max(2, (d.value / maxV) * plotW);
+      var label = el("text", { x: left - 10, y: y + rowH / 2 + 4, "text-anchor": "end", class: "bar-label" });
+      label.textContent = d.name;
+      var rect = el("rect", { x: left, y: y + 6, width: w, height: rowH - 16, rx: 5, fill: css("--accent"), opacity: 1 - i * 0.07, style: "cursor:pointer" });
+      rect.addEventListener("mousemove", function (e) { showTip(e, "<b>" + d.name + "</b><br>" + fmtRupee(d.value) + "/mo<br>" + d.note); });
+      rect.addEventListener("mouseleave", hideTip);
+      var val = el("text", { x: left + w + 10, y: y + rowH / 2 + 4, class: "bar-label" });
+      val.textContent = d.value === 0 ? "₹0" : fmtRupee(d.value, 0);
+      svg.appendChild(label); svg.appendChild(rect); svg.appendChild(val);
+    });
+    host.appendChild(svg);
+  }
+
+  // ---------------------------------------------------------------
+  // Chart 4: R2 storage growth line (12 months, cumulative, no deletion)
+  // ---------------------------------------------------------------
+  function drawR2Growth() {
+    var perMonthGB = 7.56, rate = 142.5435;
+    var months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+    var vals = months.map(function (m) { return m * perMonthGB * rate; });
+    var host = document.getElementById("chart-r2-growth");
+    var W = 800, H = 220, left = 56, right = 20, top = 24, bottom = 36;
+    var plotW = W - left - right, plotH = H - top - bottom;
+    var maxV = vals[vals.length - 1];
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: "100%", height: H, role: "img", "aria-label": "R2 answer-audio storage cost, growing month over month if clips are never deleted" });
+    svg.appendChild(el("text", { x: left, y: 14, class: "chart-title" })).textContent = "R2 storage cost, 1,000 students, if answer audio is never deleted";
+    // gridlines
+    [0, 0.25, 0.5, 0.75, 1].forEach(function (f) {
+      var y = top + plotH - f * plotH;
+      svg.appendChild(el("line", { x1: left, x2: W - right, y1: y, y2: y, class: "gridline" }));
+      svg.appendChild(el("text", { x: left - 8, y: y + 4, "text-anchor": "end", class: "axis-label" })).textContent = fmtRupee(maxV * f, 0);
+    });
+    var pts = months.map(function (m, i) {
+      var x = left + (i / (months.length - 1)) * plotW;
+      var y = top + plotH - (vals[i] / maxV) * plotH;
+      return [x, y];
+    });
+    var path = "M" + pts.map(function (p) { return p[0] + "," + p[1]; }).join(" L");
+    svg.appendChild(el("path", { d: path, fill: "none", stroke: css("--accent-2"), "stroke-width": 2.5 }));
+    var areaPath = path + " L" + pts[pts.length - 1][0] + "," + (top + plotH) + " L" + pts[0][0] + "," + (top + plotH) + " Z";
+    svg.appendChild(el("path", { d: areaPath, fill: css("--accent-2"), opacity: 0.08 }));
+    pts.forEach(function (p, i) {
+      var c = el("circle", { cx: p[0], cy: p[1], r: 4, fill: css("--surface"), stroke: css("--accent-2"), "stroke-width": 2, style: "cursor:pointer" });
+      c.addEventListener("mousemove", function (e) { showTip(e, "<b>Month " + months[i] + "</b><br>" + fmtRupee(vals[i], 0) + "/mo (" + (months[i] * perMonthGB).toFixed(0) + " GB stored)"); });
+      c.addEventListener("mouseleave", hideTip);
+      svg.appendChild(c);
+      if (i === 0 || i === 5 || i === 11) {
+        svg.appendChild(el("text", { x: p[0], y: H - bottom + 18, "text-anchor": "middle", class: "axis-label" })).textContent = "Mo " + months[i];
+      }
+    });
+    host.appendChild(svg);
+  }
+
+  // ---------------------------------------------------------------
+  // Chart 5: waterfall, revenue -> costs -> profit, 1000 students/month
+  // ---------------------------------------------------------------
+  function drawWaterfall() {
+    var steps = [
+      { name: "Revenue", delta: 499000, kind: "total" },
+      { name: "AI / provider cost", delta: -26070, kind: "cost" },
+      { name: "Platform & infra", delta: -3968, kind: "cost" },
+      { name: "Razorpay fee", delta: -11776, kind: "cost" },
+      { name: "Net profit", delta: 457186, kind: "total" }
+    ];
+    var host = document.getElementById("chart-waterfall");
+    var W = 800, H = 280, left = 20, right = 20, top = 30, bottom = 46;
+    var plotW = W - left - right, plotH = H - top - bottom;
+    var n = steps.length;
+    var bw = plotW / n * 0.62, gap = plotW / n;
+    var maxV = 499000;
+    var svg = el("svg", { viewBox: "0 0 " + W + " " + H, width: "100%", height: H, role: "img", "aria-label": "Monthly profit and loss waterfall for 1,000 students" });
+
+    var running = 0;
+    steps.forEach(function (s, i) {
+      var x = left + i * gap + (gap - bw) / 2;
+      var y0, y1;
+      if (s.kind === "total") {
+        y0 = s.name === "Revenue" ? 0 : 0;
+        y1 = s.delta;
+        running = s.name === "Revenue" ? s.delta : running;
+      } else {
+        y0 = running;
+        y1 = running + s.delta;
+        running = y1;
+      }
+      var top_v = Math.max(y0, y1), bot_v = Math.min(y0, y1);
+      var barTop = top - (top_v / maxV) * plotH + plotH;
+      var barBot = top - (bot_v / maxV) * plotH + plotH;
+      var h = Math.max(2, barBot - barTop);
+      var color = s.kind === "total" ? (s.name === "Revenue" ? css("--accent") : css("--good")) : css("--bad");
+      var rect = el("rect", { x: x, y: barTop, width: bw, height: h, rx: 4, fill: color, opacity: s.kind === "total" ? 1 : 0.75, style: "cursor:pointer" });
+      rect.addEventListener("mousemove", function (e) { showTip(e, "<b>" + s.name + "</b><br>" + (s.delta < 0 ? "−" : "") + fmtRupee(Math.abs(s.delta), 0)); });
+      rect.addEventListener("mouseleave", hideTip);
+      svg.appendChild(rect);
+      var lbl = el("text", { x: x + bw / 2, y: barTop - 8, "text-anchor": "middle", class: "bar-label" });
+      lbl.textContent = (s.delta < 0 ? "−" : "") + fmtRupee(Math.abs(s.delta), 0);
+      svg.appendChild(lbl);
+      var nameLbl = el("text", { x: x + bw / 2, y: H - bottom + 18, "text-anchor": "middle", class: "axis-label" });
+      nameLbl.textContent = s.name;
+      svg.appendChild(nameLbl);
+      // connector
+      if (i > 0 && i < n - 1) {
+        var prevX = left + (i - 1) * gap + (gap - bw) / 2 + bw;
+        var connY = top - (y0 / maxV) * plotH + plotH;
+        svg.appendChild(el("line", { x1: prevX, x2: x, y1: connY, y2: connY, stroke: css("--line"), "stroke-width": 1, "stroke-dasharray": "2,2" }));
+      }
+    });
+    host.appendChild(svg);
+  }
+
+  function drawRateTable() {
+    var rows = [
+      ["Groq Whisper (STT, primary)", "Answer transcription", "$0.111 / audio-hour (10s billing floor)"],
+      ["Sarvam saaras:v4 (STT, fallback)", "Answer transcription backup", "₹29.40 / audio-hour"],
+      ["Sarvam Bulbul v3 (TTS)", "Question audio synthesis", "₹3.00 / 1,000 characters"],
+      ["Gemini 3.5 Flash-Lite", "In-stage follow-up generation", "$0.30 in / $2.50 out per 1M tokens"],
+      ["Gemini 3.8 Flash", "End-of-interview evaluation", "$0.75 in / $3.75 out per 1M tokens (intro rate thru 2026-12-31)"],
+      ["Gemini Embedding 2", "Prep-assistant retrieval", "$0.20 / 1M input tokens"],
+      ["Cloudflare R2", "Answer audio & resume storage", "$0.015/GB-mo · $4.50/1M writes · $0.36/1M reads · $0 egress"],
+      ["Upstash Redis", "Rate limiting", "$0.20 / 100,000 commands"],
+      ["Razorpay", "Payment processing", "2% + 18% GST ≈ 2.36% of transaction value"]
+    ];
+    var tbody = document.getElementById("rate-table");
+    rows.forEach(function (r) {
+      var tr = document.createElement("tr");
+      tr.innerHTML = "<td>" + r[0] + "</td><td>" + r[1] + "</td><td class=\"num\">" + r[2] + "</td>";
+      tbody.appendChild(tr);
+    });
+  }
+
+  drawFeatureChart();
+  drawInterviewSplit();
+  drawPlatformChart();
+  drawR2Growth();
+  drawWaterfall();
+  drawRateTable();
+})();
+</script>
+
+</body></html>
