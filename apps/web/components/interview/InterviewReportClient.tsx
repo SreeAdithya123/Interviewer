@@ -10,6 +10,7 @@ import { getTurnAudio } from "@/lib/interview/audio-store";
 import { formatClock } from "@/lib/interview/recording";
 import { ProctoringAuditCard } from "@/components/proctoring/ProctoringAuditCard";
 import { ProctorAuditReel } from "@/components/proctoring/ProctorAuditReel";
+import { NationalBenchmarkCard } from "@/components/benchmarks/NationalBenchmarkCard";
 import type { ProctoringSummary } from "@/lib/proctoring/types";
 import {
   DIFFICULTY_LABELS,
@@ -193,6 +194,15 @@ export function InterviewReportClient({
               <span className="font-body text-base text-muted-foreground font-normal">/ 100</span>
             </div>
           </Card>
+
+          {/* National Engineering Percentile Benchmark */}
+          <NationalBenchmarkCard
+            score={report.overall_score !== null ? Math.round(report.overall_score) : 70}
+            technicalDepth={report.scores?.technical_depth?.score}
+            communicationClarity={report.scores?.communication_clarity?.score}
+            answerStructure={report.scores?.answer_structure?.score}
+            confidenceAndDelivery={report.scores?.confidence_and_delivery?.score}
+          />
 
           {/* Scores by Dimension */}
           <Card className="space-y-4">

@@ -32,6 +32,7 @@ const COLLEGE_ADMIN_NAV: NavItem[] = [
   { label: "Students", href: "/app/students" },
   { label: "Invites", href: "/app/invites" },
   { label: "ATS Sync", href: "/app/ats" },
+  { label: "Compliance", href: "/app/compliance" },
 ];
 
 const PLATFORM_ADMIN_NAV: NavItem[] = [
