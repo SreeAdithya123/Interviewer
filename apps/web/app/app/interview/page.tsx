@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { InterviewSetupForm } from "@/components/interview/InterviewSetupForm";
 
@@ -18,7 +19,9 @@ export default function InterviewSetupPage() {
       </div>
 
       <div className="rounded-lg border border-border/80 bg-card p-6">
-        <InterviewSetupForm />
+        <Suspense fallback={<div className="py-8 text-center text-xs text-muted-foreground">Loading configuration...</div>}>
+          <InterviewSetupForm />
+        </Suspense>
       </div>
     </div>
   );

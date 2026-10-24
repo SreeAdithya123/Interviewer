@@ -9,6 +9,7 @@ import { retryInterviewReport } from "@/lib/interview/actions";
 import { getTurnAudio } from "@/lib/interview/audio-store";
 import { formatClock } from "@/lib/interview/recording";
 import { ProctoringAuditCard } from "@/components/proctoring/ProctoringAuditCard";
+import { ProctorAuditReel } from "@/components/proctoring/ProctorAuditReel";
 import type { ProctoringSummary } from "@/lib/proctoring/types";
 import {
   DIFFICULTY_LABELS,
@@ -265,6 +266,14 @@ export function InterviewReportClient({
             </ul>
           </Card>
         </>
+      )}
+
+      {/* Automated 60s Proctoring Audit Reel */}
+      {proctoringSummary && (
+        <ProctorAuditReel
+          summary={proctoringSummary}
+          studentName={interview.target_role || undefined}
+        />
       )}
 
       {/* Proctoring & Integrity Telemetry Card */}

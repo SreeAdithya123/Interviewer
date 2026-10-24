@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { createInterview } from "@/lib/interview/actions";
 import type { Difficulty, InterviewType } from "@/lib/interview/types";
 import { DIFFICULTY_LABELS, INTERVIEW_TYPE_LABELS } from "@/lib/interview/types";
+import { COMPANY_BLUEPRINTS, getBlueprintById } from "@/lib/blueprints/catalog";
 
 const INTERVIEW_TYPES: InterviewType[] = ["hr", "technical", "behavioral", "mixed"];
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
@@ -37,12 +38,46 @@ function ChoiceButton({
 
 export function InterviewSetupForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const blueprintParam = searchParams.get("blueprint");
+
+  const [selectedBlueprintId, setSelectedBlueprintId] = useState<string>(blueprintParam || "");
   const [interviewType, setInterviewType] = useState<InterviewType>("mixed");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [targetRole, setTargetRole] = useState("");
   const [companyType, setCompanyType] = useState("");
   const [status, setStatus] = useState<"idle" | "submitting" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (blueprintParam) {
+      const bp = getBlueprintById(blueprintParam);
+      if (bp) {
+        setSelectedBlueprintId(bp.id);
+        setCompanyType(bp.companyName);
+        setTargetRole(bp.hiringTiers[0]?.name || "Software Engineer");
+        if (bp.id === "bp_amazon") setDifficulty("hard");
+        else if (bp.id === "bp_accenture" || bp.id === "bp_wipro") setDifficulty("easy");
+        else setDifficulty("medium");
+      }
+    }
+  }, [blueprintParam]);
+
+  function handleBlueprintSelect(bpId: string) {
+    if (!bpId) {
+      setSelectedBlueprintId("");
+      return;
+    }
+    const bp = getBlueprintById(bpId);
+    if (bp) {
+      setSelectedBlueprintId(bp.id);
+      setCompanyType(bp.companyName);
+      setTargetRole(bp.hiringTiers[0]?.name || "Software Engineer");
+      if (bp.id === "bp_amazon") setDifficulty("hard");
+      else if (bp.id === "bp_accenture" || bp.id === "bp_wipro") setDifficulty("easy");
+      else setDifficulty("medium");
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -65,6 +100,32 @@ export function InterviewSetupForm() {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Quick Blueprint Selector */}
+      <fieldset>
+        <div className="flex items-center justify-between">
+          <legend className="font-body text-xs font-medium text-foreground">Company Blueprint Simulation (optional)</legend>
+          <span className="text-[11px] text-muted-foreground">Calibrated patterns</span>
+        </div>
+        <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {COMPANY_BLUEPRINTS.map((bp) => (
+            <button
+              key={bp.id}
+              type="button"
+              onClick={() => handleBlueprintSelect(selectedBlueprintId === bp.id ? "" : bp.id)}
+              className={cn(
+                "flex items-center justify-between rounded border p-2 text-left text-xs transition-colors",
+                selectedBlueprintId === bp.id
+                  ? "border-foreground bg-muted font-medium text-foreground"
+                  : "border-border/80 bg-background text-muted-foreground hover:border-border hover:text-foreground"
+              )}
+            >
+              <div className="truncate font-medium">{bp.shortCode}</div>
+              <span className="font-mono text-[10px] tabular-nums text-muted-foreground">{bp.typicalPackageCtc}</span>
+            </button>
+          ))}
+        </div>
+      </fieldset>
+
       <fieldset>
         <legend className="font-body text-xs font-medium text-foreground">Interview track</legend>
         <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">

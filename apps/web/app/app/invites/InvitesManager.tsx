@@ -3,6 +3,8 @@
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { parseCsv, downloadCsv } from "@/lib/csv";
+import { parseErpCsv } from "@/lib/erp/importer";
+import { dispatchNotification } from "@/lib/notifications/whatsapp";
 import { cn } from "@/lib/utils";
 import StatusBadge from "@/components/app-shell/StatusBadge";
 
@@ -349,10 +351,13 @@ function CsvInviteUploader({
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [erpFormatDetected, setErpFormatDetected] = useState<string | null>(null);
+  const [sendWhatsAppAlert, setSendWhatsAppAlert] = useState(true);
 
   function reset() {
     setRows([]);
     setFileError(null);
+    setErpFormatDetected(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -368,7 +373,28 @@ function CsvInviteUploader({
     if (!file) return;
 
     setFileError(null);
+    setErpFormatDetected(null);
     const text = await file.text();
+
+    // Check for Superset, Camu, MasterSoft formats
+    const erpSummary = parseErpCsv(text);
+    if (erpSummary.validStudents.length > 0 && erpSummary.formatDetected !== "generic_csv") {
+      setErpFormatDetected(erpSummary.formatDetected);
+      const parsedRows: ParsedRow[] = erpSummary.validStudents.map((st, idx) => ({
+        rowNumber: idx + 2,
+        email: st.email,
+        roleInput: "student",
+        batchInput: `${st.batchYear} Batch`,
+        role: "student",
+        batchId: batches.find((b) => b.name.toLowerCase().includes(String(st.batchYear)))?.id || null,
+        error: null,
+        result: "idle",
+        resultMessage: null,
+      }));
+      setRows(parsedRows);
+      return;
+    }
+
     const parsed = parseCsv(text);
 
     if (parsed.length === 0) {
@@ -383,7 +409,7 @@ function CsvInviteUploader({
     const batchIdx = header.indexOf("batch");
 
     if (emailIdx === -1) {
-      setFileError("CSV must include an 'email' column.");
+      setFileError("CSV must include an 'email' column, or be an ERP export (Superset/Camu/MasterSoft).");
       setRows([]);
       return;
     }
@@ -465,6 +491,22 @@ function CsvInviteUploader({
       } else {
         updated[i] = { ...row, result: "success", resultMessage: "Invited" };
         const batchName = batches.find((b) => b.id === data.batch_id)?.name ?? null;
+
+        if (sendWhatsAppAlert) {
+          // Trigger simulated/live WhatsApp onboarding alert
+          dispatchNotification({
+            type: "mock_scheduled",
+            recipient: {
+              studentName: row.email.split("@")[0],
+              phoneNumber: "+919876543210",
+              email: row.email,
+            },
+            collegeName: "Campus Placement Cell",
+            companyName: "Placement Readiness Mock",
+            magicLink: inviteLink(data.token),
+          }).catch(() => null);
+        }
+
         onCreated({
           id: data.id,
           email: data.email,
@@ -528,8 +570,35 @@ function CsvInviteUploader({
         </p>
       )}
 
+      {erpFormatDetected && (
+        <div className="mt-2.5 flex items-center justify-between rounded border border-emerald-200/80 bg-emerald-50/60 px-3 py-2 text-xs text-emerald-950 dark:border-emerald-800/40 dark:bg-emerald-950/30 dark:text-emerald-300">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold uppercase tracking-wider text-[10px] bg-emerald-100 dark:bg-emerald-900/60 px-1.5 py-0.5 rounded">
+              {erpFormatDetected}
+            </span>
+            <span>Automatic ERP mapping applied: {rows.length} candidates loaded</span>
+          </div>
+          <span className="text-[11px] opacity-80">Ready for batch invite</span>
+        </div>
+      )}
+
       {rows.length > 0 && (
         <div className="mt-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 text-xs font-medium text-foreground cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={sendWhatsAppAlert}
+                onChange={(e) => setSendWhatsAppAlert(e.target.checked)}
+                className="rounded border-border/80"
+              />
+              <span>Trigger WhatsApp Mock Prep Alert (+91 SMS fallback)</span>
+            </label>
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground font-mono">
+              ~₹0.48 / candidate
+            </span>
+          </div>
+
           <div className="overflow-x-auto rounded border border-border/80">
             <table className="w-full text-left font-body text-xs">
               <thead>

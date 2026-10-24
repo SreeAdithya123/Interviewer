@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import type { PlacementDrive, EligibilityResult } from "@/lib/drives/types";
 import { createDriveAction, startDriveInterviewAction } from "./actions";
+import { COMPANY_BLUEPRINTS } from "@/lib/blueprints/catalog";
 
 interface DrivesClientProps {
   drives: PlacementDrive[];
@@ -28,6 +29,21 @@ export function DrivesClient({
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "upcoming">("all");
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalCompanyName, setModalCompanyName] = useState("");
+  const [modalTargetRole, setModalTargetRole] = useState("");
+  const [modalPackageCtc, setModalPackageCtc] = useState("");
+  const [modalCutoff, setModalCutoff] = useState(70);
+  const [modalJobDesc, setModalJobDesc] = useState("");
+
+  const handleApplyBlueprint = (bpId: string) => {
+    const bp = COMPANY_BLUEPRINTS.find((b) => b.id === bpId);
+    if (!bp) return;
+    setModalCompanyName(bp.companyName);
+    setModalTargetRole(bp.hiringTiers[0]?.name || "Software Engineer");
+    setModalPackageCtc(bp.typicalPackageCtc);
+    setModalCutoff(bp.hiringTiers[0]?.minScore || 70);
+    setModalJobDesc(`${bp.overview}\n\nKey Competencies Assessed:\n${bp.keyCompetencies.map((c) => `• ${c}`).join("\n")}`);
+  };
   const [isStartingId, setIsStartingId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
   const [actionError, setActionError] = useState<string | null>(null);
@@ -340,6 +356,25 @@ export function DrivesClient({
             </div>
 
             <form onSubmit={handleCreateSubmit} className="mt-4 space-y-3.5">
+              {/* Quick Template from Blueprint */}
+              <div className="rounded border border-border/80 bg-muted/20 p-2.5 space-y-1.5">
+                <span className="font-body text-[11px] font-medium text-muted-foreground">
+                  Load Template from Standard Blueprint:
+                </span>
+                <div className="flex flex-wrap gap-1">
+                  {COMPANY_BLUEPRINTS.map((bp) => (
+                    <button
+                      key={bp.id}
+                      type="button"
+                      onClick={() => handleApplyBlueprint(bp.id)}
+                      className="rounded border border-border/60 bg-background px-2 py-0.5 font-body text-[11px] text-muted-foreground hover:border-foreground hover:text-foreground"
+                    >
+                      {bp.shortCode}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="block">
                   <span className="font-body text-xs font-medium text-foreground">Company name *</span>
@@ -347,6 +382,8 @@ export function DrivesClient({
                     type="text"
                     name="companyName"
                     required
+                    value={modalCompanyName}
+                    onChange={(e) => setModalCompanyName(e.target.value)}
                     placeholder="e.g. Google, Microsoft, TCS"
                     className="mt-1 h-8 w-full rounded border border-border/80 bg-background px-3 font-body text-xs text-foreground outline-none focus:border-foreground/40"
                   />
@@ -358,6 +395,8 @@ export function DrivesClient({
                     type="text"
                     name="targetRole"
                     required
+                    value={modalTargetRole}
+                    onChange={(e) => setModalTargetRole(e.target.value)}
                     placeholder="e.g. SDE-1, Data Analyst"
                     className="mt-1 h-8 w-full rounded border border-border/80 bg-background px-3 font-body text-xs text-foreground outline-none focus:border-foreground/40"
                   />
@@ -370,6 +409,8 @@ export function DrivesClient({
                   <input
                     type="text"
                     name="packageCtc"
+                    value={modalPackageCtc}
+                    onChange={(e) => setModalPackageCtc(e.target.value)}
                     placeholder="e.g. 12.5 LPA"
                     className="mt-1 h-8 w-full rounded border border-border/80 bg-background px-3 font-body text-xs text-foreground outline-none focus:border-foreground/40"
                   />
@@ -392,7 +433,8 @@ export function DrivesClient({
                   <input
                     type="number"
                     name="minReadinessScore"
-                    defaultValue={70}
+                    value={modalCutoff}
+                    onChange={(e) => setModalCutoff(parseInt(e.target.value, 10) || 0)}
                     min={0}
                     max={100}
                     className="mt-1 h-8 w-full rounded border border-border/80 bg-background px-3 font-body text-xs text-foreground outline-none focus:border-foreground/40"
@@ -425,6 +467,8 @@ export function DrivesClient({
                 <textarea
                   name="jobDescription"
                   rows={3}
+                  value={modalJobDesc}
+                  onChange={(e) => setModalJobDesc(e.target.value)}
                   placeholder="Key responsibilities and qualifications required for this campus drive..."
                   className="mt-1 w-full rounded border border-border/80 bg-background p-2.5 font-body text-xs text-foreground outline-none focus:border-foreground/40 resize-none"
                 />
