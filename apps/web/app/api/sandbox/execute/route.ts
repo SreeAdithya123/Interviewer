@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@/lib/supabase/server";
 import type { SupportedLanguage, TestCase } from "@/lib/sandbox/types";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,15 @@ interface ExecuteRequestBody {
 
 export async function POST(request: Request) {
   try {
+    const supabase = await createClient();
+    const { data: userData, error: authError } = await supabase.auth.getUser();
+    if (authError || !userData?.user) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized. Please sign in to run code.", executionTimeMs: 0 },
+        { status: 401 },
+      );
+    }
+
     const body: ExecuteRequestBody = await request.json();
     const { language, code, testCases = [] } = body;
 

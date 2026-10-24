@@ -22,13 +22,19 @@ function getAdminClient() {
 
 export function verifyWebhookSignature(payload: string, signature: string): boolean {
   if (!RAZORPAY_WEBHOOK_SECRET) {
-    // If webhook secret not configured in dev, pass for simulation
+    // Fail closed in production; allow pass-through only in local dev simulation
+    if (process.env.NODE_ENV === "production") {
+      return false;
+    }
     return true;
   }
   const expected = crypto
     .createHmac("sha256", RAZORPAY_WEBHOOK_SECRET)
     .update(payload)
     .digest("hex");
+  if (expected.length !== signature.length) {
+    return false;
+  }
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
@@ -37,12 +43,20 @@ export function verifyPaymentSignature(
   paymentId: string,
   signature: string
 ): boolean {
-  if (!RAZORPAY_KEY_SECRET) return true;
+  if (!RAZORPAY_KEY_SECRET) {
+    if (process.env.NODE_ENV === "production") {
+      return false;
+    }
+    return true;
+  }
   const expected = crypto
     .createHmac("sha256", RAZORPAY_KEY_SECRET)
     .update(`${orderId}|${paymentId}`)
     .digest("hex");
-  return expected === signature;
+  if (expected.length !== signature.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
 export async function createRazorpayOrder({
