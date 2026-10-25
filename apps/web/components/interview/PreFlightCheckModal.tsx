@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   detectDisplaySetup,
   INITIAL_SYSTEM_CHECK_STATUS,
@@ -9,6 +9,17 @@ import {
   measureInternetLatency,
   type SystemCheckStatus,
 } from "@/lib/proctoring/systemCheck";
+import {
+  Camera,
+  CameraOff,
+  Mic,
+  MicOff,
+  RefreshCw,
+  AlertCircle,
+  HelpCircle,
+  CheckCircle2,
+  Lock,
+} from "lucide-react";
 
 interface PreFlightCheckModalProps {
   interviewRole?: string;
@@ -23,11 +34,166 @@ export function PreFlightCheckModal({
   const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [isStarting, setIsStarting] = useState(false);
+  const [isRequestingCam, setIsRequestingCam] = useState(false);
+  const [isRequestingMic, setIsRequestingMic] = useState(false);
+  const [showPermissionGuide, setShowPermissionGuide] = useState(false);
 
   const videoPreviewRef = useRef<HTMLVideoElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+
+  // Helper: Setup AudioContext Analyser & VU Meter
+  const setupAudioAnalyser = useCallback((stream: MediaStream) => {
+    try {
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+      }
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx();
+      audioContextRef.current = ctx;
+      const analyser = ctx.createAnalyser();
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
+
+      const source = ctx.createMediaStreamSource(stream);
+      source.connect(analyser);
+
+      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      const updateAudioLevel = () => {
+        if (!analyserRef.current) return;
+        analyserRef.current.getByteFrequencyData(dataArray);
+        let sum = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sum += dataArray[i];
+        }
+        const avg = sum / dataArray.length;
+        const pct = Math.min(100, Math.round((avg / 128) * 100));
+        setAudioLevel(pct);
+        animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+      };
+      updateAudioLevel();
+    } catch {
+      // AudioContext fallback
+    }
+  }, []);
+
+  // Request Camera Permission on-demand
+  const requestCamera = useCallback(async () => {
+    setIsRequestingCam(true);
+    setStatus((prev) => ({
+      ...prev,
+      camera: { ...prev.camera, status: "checking", message: "Requesting camera permission..." },
+    }));
+
+    try {
+      const camStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
+      });
+
+      // Update active stream combining with existing audio tracks if present
+      setActiveStream((prev) => {
+        const audioTracks = prev ? prev.getAudioTracks() : [];
+        const merged = new MediaStream([...camStream.getVideoTracks(), ...audioTracks]);
+        if (videoPreviewRef.current) {
+          videoPreviewRef.current.srcObject = merged;
+          void videoPreviewRef.current.play().catch(() => {});
+        }
+        return merged;
+      });
+
+      const camInfo = await inspectCameraDevices();
+
+      setStatus((prev) => ({
+        ...prev,
+        camera: {
+          status: "passed",
+          hasPermission: true,
+          isExternal: camInfo.isExternal,
+          deviceName: camInfo.deviceName,
+          devicesCount: camInfo.devicesCount,
+          message: camInfo.isExternal
+            ? "External camera verified."
+            : "Integrated camera active.",
+        },
+      }));
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Access denied";
+      setStatus((prev) => ({
+        ...prev,
+        camera: {
+          ...prev.camera,
+          status: "failed",
+          hasPermission: false,
+          message: `Camera blocked (${errMsg}). Click "Enable Camera" or check browser site settings.`,
+        },
+      }));
+      setShowPermissionGuide(true);
+    } finally {
+      setIsRequestingCam(false);
+    }
+  }, []);
+
+  // Request Microphone Permission on-demand
+  const requestMicrophone = useCallback(async () => {
+    setIsRequestingMic(true);
+    setStatus((prev) => ({
+      ...prev,
+      microphone: { ...prev.microphone, status: "checking", message: "Requesting microphone permission..." },
+    }));
+
+    try {
+      const micStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+      });
+
+      // Update active stream combining with existing video tracks if present
+      setActiveStream((prev) => {
+        const videoTracks = prev ? prev.getVideoTracks() : [];
+        const merged = new MediaStream([...videoTracks, ...micStream.getAudioTracks()]);
+        return merged;
+      });
+
+      const audioTracks = micStream.getAudioTracks();
+      const micName = audioTracks[0]?.label || "Default Microphone";
+
+      setupAudioAnalyser(micStream);
+
+      setStatus((prev) => ({
+        ...prev,
+        microphone: {
+          status: "passed",
+          hasPermission: true,
+          deviceName: micName,
+          audioDetected: true,
+          audioLevelPct: 15,
+          message: "Microphone stream connected.",
+        },
+      }));
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Access denied";
+      setStatus((prev) => ({
+        ...prev,
+        microphone: {
+          ...prev.microphone,
+          status: "failed",
+          hasPermission: false,
+          message: `Microphone blocked (${errMsg}). Click "Enable Microphone" or check browser site settings.`,
+        },
+      }));
+      setShowPermissionGuide(true);
+    } finally {
+      setIsRequestingMic(false);
+    }
+  }, [setupAudioAnalyser]);
+
+  // Request both Camera & Microphone simultaneously
+  const requestAllMediaPermissions = useCallback(async () => {
+    await requestCamera();
+    await requestMicrophone();
+  }, [requestCamera, requestMicrophone]);
 
   // 1. Initial Auto-checks on mount (Internet, Display, Devices)
   useEffect(() => {
@@ -70,7 +236,7 @@ export function PreFlightCheckModal({
         }));
       }
 
-      // Check 3 & 4: Camera & Microphone getUserMedia Stream
+      // Try initial camera & mic access automatically
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: "user" },
@@ -113,51 +279,26 @@ export function PreFlightCheckModal({
           },
         }));
 
-        // Set up AudioContext VU Meter
-        try {
-          const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-          const ctx = new AudioCtx();
-          audioContextRef.current = ctx;
-          const analyser = ctx.createAnalyser();
-          analyser.fftSize = 256;
-          analyserRef.current = analyser;
-
-          const source = ctx.createMediaStreamSource(stream);
-          source.connect(analyser);
-
-          const dataArray = new Uint8Array(analyser.frequencyBinCount);
-          const updateAudioLevel = () => {
-            if (!analyserRef.current) return;
-            analyserRef.current.getByteFrequencyData(dataArray);
-            let sum = 0;
-            for (let i = 0; i < dataArray.length; i++) {
-              sum += dataArray[i];
-            }
-            const avg = sum / dataArray.length;
-            const pct = Math.min(100, Math.round((avg / 128) * 100));
-            setAudioLevel(pct);
-            animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
-          };
-          updateAudioLevel();
-        } catch {
-          // AudioContext fallback
-        }
+        setupAudioAnalyser(stream);
       } catch (err) {
         if (!unmounted) {
-          const errMsg = err instanceof Error ? err.message : "Access denied";
+          const errMsg = err instanceof Error ? err.message : "Permissions required";
           setStatus((prev) => ({
             ...prev,
             camera: {
               ...prev.camera,
               status: "failed",
-              message: `Camera error: ${errMsg}. Please allow camera access in browser permissions.`,
+              hasPermission: false,
+              message: `Camera permissions required (${errMsg}). Use the button below to enable.`,
             },
             microphone: {
               ...prev.microphone,
               status: "failed",
-              message: `Microphone error: ${errMsg}. Please allow microphone access in browser permissions.`,
+              hasPermission: false,
+              message: `Microphone permissions required (${errMsg}). Use the button below to enable.`,
             },
           }));
+          setShowPermissionGuide(true);
         }
       }
     }
@@ -173,7 +314,7 @@ export function PreFlightCheckModal({
         audioContextRef.current.close().catch(() => {});
       }
     };
-  }, []);
+  }, [setupAudioAnalyser]);
 
   const handleRetestInternet = async () => {
     setStatus((prev) => ({
@@ -239,9 +380,11 @@ export function PreFlightCheckModal({
     onAllPassedAndStart(activeStream, status.camera.isExternal);
   };
 
+  const isPermissionsMissing = !status.camera.hasPermission || !status.microphone.hasPermission;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <div className="relative w-full max-w-2xl rounded-lg border border-border/80 bg-card p-6 shadow-2xl font-body space-y-5 max-h-[92vh] overflow-y-auto">
+      <div className="relative w-full max-w-2xl rounded-2xl border border-border/80 bg-card p-6 shadow-2xl font-body space-y-5 max-h-[94vh] overflow-y-auto">
         {/* Title row */}
         <div className="flex flex-col gap-1 border-b border-border/80 pb-3">
           <div className="flex items-center justify-between">
@@ -258,64 +401,103 @@ export function PreFlightCheckModal({
           </p>
         </div>
 
+        {/* Permissions Off Alert Banner with Quick Enable Button */}
+        {isPermissionsMissing && (
+          <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-2.5 text-amber-600 dark:text-amber-400">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-foreground">
+                  Permissions are off:{" "}
+                  {[
+                    !status.camera.hasPermission && "Camera",
+                    !status.microphone.hasPermission && "Microphone",
+                  ]
+                    .filter(Boolean)
+                    .join(" & ")}{" "}
+                  needed
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">
+                  Click the button to grant access directly in your browser.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={requestAllMediaPermissions}
+              disabled={isRequestingCam || isRequestingMic}
+              className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-amber-600 px-3.5 py-1.5 text-xs font-medium text-white hover:bg-amber-700 transition shrink-0 shadow-sm disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${isRequestingCam || isRequestingMic ? "animate-spin" : ""}`} />
+              Enable Camera & Mic
+            </button>
+          </div>
+        )}
+
         {/* 4-Item Verification Grid */}
         <div className="grid gap-3 sm:grid-cols-2">
           {/* Check 1: Internet Stability */}
-          <div className="rounded border border-border/80 bg-background/50 p-3.5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-foreground">1. Network & Ping</span>
-              {status.internet.status === "passed" ? (
-                <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  ✓ Passed
-                </span>
-              ) : status.internet.status === "checking" ? (
-                <span className="font-mono text-[10px] text-muted-foreground">Pinging...</span>
-              ) : (
-                <span className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
-                  ✕ Failed
-                </span>
-              )}
+          <div className="rounded-xl border border-border/80 bg-background/50 p-3.5 space-y-1.5 flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-foreground">1. Network & Ping</span>
+                {status.internet.status === "passed" ? (
+                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    ✓ Passed ({status.internet.latencyMs}ms)
+                  </span>
+                ) : status.internet.status === "checking" ? (
+                  <span className="font-mono text-[10px] text-muted-foreground animate-pulse">Pinging...</span>
+                ) : (
+                  <span className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+                    ✕ Failed
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{status.internet.message}</p>
             </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">{status.internet.message}</p>
-            <div className="flex justify-end pt-0.5">
+            <div className="flex justify-end pt-1">
               <button
                 type="button"
                 onClick={handleRetestInternet}
-                className="text-[10px] font-mono text-muted-foreground underline hover:text-foreground"
+                className="text-[10px] font-mono text-muted-foreground underline hover:text-foreground inline-flex items-center gap-1"
               >
+                <RefreshCw className="h-3 w-3" />
                 Retest ping
               </button>
             </div>
           </div>
 
           {/* Check 2: Display & External Monitor */}
-          <div className="rounded border border-border/80 bg-background/50 p-3.5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-foreground">2. Display Integrity</span>
-              {status.display.status === "passed" ? (
-                <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  ✓ Single Display
-                </span>
-              ) : (
-                <span className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
-                  ✕ Multi-Screen Alert
-                </span>
-              )}
+          <div className="rounded-xl border border-border/80 bg-background/50 p-3.5 space-y-1.5 flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium text-foreground">2. Display Integrity</span>
+                {status.display.status === "passed" ? (
+                  <span className="rounded bg-emerald-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
+                    ✓ Single Display
+                  </span>
+                ) : (
+                  <span className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+                    ✕ Multi-Display Blocked
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-relaxed">{status.display.message}</p>
             </div>
-            <p className="text-[11px] text-muted-foreground leading-relaxed">{status.display.message}</p>
-            <div className="flex justify-end pt-0.5">
+            <div className="flex justify-end pt-1">
               <button
                 type="button"
                 onClick={handleRetestDisplay}
-                className="text-[10px] font-mono text-muted-foreground underline hover:text-foreground"
+                className="text-[10px] font-mono text-muted-foreground underline hover:text-foreground inline-flex items-center gap-1"
               >
+                <RefreshCw className="h-3 w-3" />
                 Re-scan displays
               </button>
             </div>
           </div>
 
           {/* Check 3: Webcam & Video Stream Preview */}
-          <div className="rounded border border-border/80 bg-background/50 p-3.5 space-y-2">
+          <div className="rounded-xl border border-border/80 bg-background/50 p-3.5 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-foreground">3. Camera Stream</span>
               {status.camera.status === "passed" ? (
@@ -324,30 +506,58 @@ export function PreFlightCheckModal({
                 </span>
               ) : (
                 <span className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
-                  ✕ Cam Offline
+                  ✕ Cam Off
                 </span>
               )}
             </div>
-            {/* Live Video Preview Box */}
-            <div className="relative aspect-[4/3] w-full overflow-hidden rounded border border-border/80 bg-black flex items-center justify-center">
-              <video
-                ref={videoPreviewRef}
-                autoPlay
-                playsInline
-                muted
-                className="h-full w-full object-cover scale-x-[-1]"
-              />
-              <div className="pointer-events-none absolute inset-0 border border-dashed border-white/20 rounded m-2 flex items-center justify-center">
-                <span className="text-[10px] font-mono text-white/50 bg-black/40 px-1.5 py-0.5 rounded backdrop-blur">
-                  Position Face Centered
-                </span>
+
+            {/* Live Video Preview Box OR Enable Button Box */}
+            {status.camera.status === "passed" ? (
+              <div className="space-y-1">
+                <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-border/80 bg-black flex items-center justify-center shadow-inner">
+                  <video
+                    ref={videoPreviewRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="h-full w-full object-cover scale-x-[-1]"
+                  />
+                  <div className="pointer-events-none absolute inset-0 border border-dashed border-white/20 rounded m-2 flex items-center justify-center">
+                    <span className="text-[10px] font-mono text-white/60 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur">
+                      Position Face Centered
+                    </span>
+                  </div>
+                </div>
+                <p className="text-[10px] font-mono text-muted-foreground truncate">
+                  {status.camera.deviceName || "Webcam Active"}
+                </p>
               </div>
-            </div>
-            <p className="text-[10px] font-mono text-muted-foreground truncate">{status.camera.deviceName || "Webcam"}</p>
+            ) : (
+              <div className="relative aspect-[4/3] w-full rounded-lg border border-dashed border-rose-500/30 bg-rose-500/5 p-4 flex flex-col items-center justify-center text-center space-y-2.5">
+                <div className="h-10 w-10 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-500">
+                  <CameraOff className="h-5 w-5" />
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold text-foreground">Camera permission is off</p>
+                  <p className="text-[11px] text-muted-foreground max-w-[210px] leading-tight">
+                    Required for proctored face detection and visual integrity.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={requestCamera}
+                  disabled={isRequestingCam}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-sm disabled:opacity-50"
+                >
+                  <Camera className="h-3.5 w-3.5" />
+                  {isRequestingCam ? "Enabling..." : "Enable Camera"}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Check 4: Microphone & Live VU Meter */}
-          <div className="rounded border border-border/80 bg-background/50 p-3.5 space-y-2 flex flex-col justify-between">
+          <div className="rounded-xl border border-border/80 bg-background/50 p-3.5 space-y-2 flex flex-col justify-between">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-medium text-foreground">4. Audio Microphone</span>
@@ -357,7 +567,7 @@ export function PreFlightCheckModal({
                   </span>
                 ) : (
                   <span className="rounded bg-rose-50 px-1.5 py-0.5 font-mono text-[10px] font-medium text-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
-                    ✕ Mic Offline
+                    ✕ Mic Off
                   </span>
                 )}
               </div>
@@ -366,29 +576,82 @@ export function PreFlightCheckModal({
               </p>
             </div>
 
-            {/* Live VU Meter */}
-            <div className="space-y-1 pt-2">
-              <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-                <span>Mic Input Level:</span>
-                <span>{audioLevel}%</span>
+            {/* Live VU Meter OR Enable Button Box */}
+            {status.microphone.status === "passed" ? (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
+                  <span>Mic Input Level:</span>
+                  <span className="font-semibold text-foreground">{audioLevel}%</span>
+                </div>
+                <div className="h-2.5 w-full rounded-full bg-muted overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-75 rounded-full ${
+                      audioLevel > 10 ? "bg-emerald-500" : "bg-muted-foreground/30"
+                    }`}
+                    style={{ width: `${Math.max(5, audioLevel)}%` }}
+                  />
+                </div>
+                <p className="text-[10px] font-mono text-muted-foreground truncate pt-0.5">
+                  {status.microphone.deviceName || "Microphone Active"}
+                </p>
               </div>
-              <div className="h-2 w-full rounded-full bg-muted overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-75 rounded-full ${
-                    audioLevel > 10 ? "bg-emerald-500" : "bg-muted-foreground/30"
-                  }`}
-                  style={{ width: `${Math.max(5, audioLevel)}%` }}
-                />
+            ) : (
+              <div className="rounded-lg border border-dashed border-rose-500/30 bg-rose-500/5 p-4 flex flex-col items-center justify-center text-center space-y-2.5">
+                <div className="h-10 w-10 rounded-full bg-rose-500/10 flex items-center justify-center text-rose-500">
+                  <MicOff className="h-5 w-5" />
+                </div>
+                <div className="space-y-0.5">
+                  <p className="text-xs font-semibold text-foreground">Microphone permission is off</p>
+                  <p className="text-[11px] text-muted-foreground max-w-[210px] leading-tight">
+                    Required for audio transcription and answering interview questions.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={requestMicrophone}
+                  disabled={isRequestingMic}
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-sm disabled:opacity-50"
+                >
+                  <Mic className="h-3.5 w-3.5" />
+                  {isRequestingMic ? "Enabling..." : "Enable Microphone"}
+                </button>
               </div>
-              <p className="text-[10px] font-mono text-muted-foreground truncate pt-1">
-                {status.microphone.deviceName || "Microphone"}
-              </p>
-            </div>
+            )}
           </div>
         </div>
 
+        {/* Collapsible Browser Permission Troubleshooting Guide */}
+        {isPermissionsMissing && (
+          <div className="rounded-xl border border-border/80 bg-muted/20 p-3 space-y-2">
+            <button
+              type="button"
+              onClick={() => setShowPermissionGuide((prev) => !prev)}
+              className="flex items-center justify-between w-full text-left font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              <span className="flex items-center gap-1.5">
+                <HelpCircle className="h-3.5 w-3.5" />
+                How to enable permissions if your browser blocked them
+              </span>
+              <span>{showPermissionGuide ? "Hide ▲" : "Show ▼"}</span>
+            </button>
+            {showPermissionGuide && (
+              <ol className="list-decimal list-inside space-y-1 text-[11px] text-muted-foreground pl-1 pt-1 leading-relaxed border-t border-border/40">
+                <li>
+                  Click the <strong>Padlock (🔒)</strong> or <strong>Tune / Settings icon</strong> in your browser&apos;s address bar (on the left of the URL).
+                </li>
+                <li>
+                  Find <strong>Camera</strong> and <strong>Microphone</strong> in the dropdown menu and set both to <strong>&ldquo;Allow&rdquo;</strong>.
+                </li>
+                <li>
+                  Return to this window and tap <strong>&ldquo;Enable Camera & Mic&rdquo;</strong> above to re-connect your devices without refreshing.
+                </li>
+              </ol>
+            )}
+          </div>
+        )}
+
         {/* Lock Screen Mode Acknowledgement */}
-        <div className="rounded border border-border/80 bg-muted/20 p-3.5 space-y-2 text-xs">
+        <div className="rounded-xl border border-border/80 bg-muted/20 p-3.5 space-y-2 text-xs">
           <label className="flex items-start gap-2.5 cursor-pointer select-none">
             <input
               type="checkbox"
@@ -397,7 +660,8 @@ export function PreFlightCheckModal({
               className="mt-0.5 rounded border-border/80 text-foreground focus:ring-0"
             />
             <div className="space-y-0.5">
-              <span className="font-medium text-foreground">
+              <span className="font-semibold text-foreground flex items-center gap-1.5">
+                <Lock className="h-3.5 w-3.5 text-primary" />
                 I acknowledge and enable Secure Lockdown Fullscreen Mode
               </span>
               <p className="text-[11px] text-muted-foreground leading-relaxed">
@@ -409,8 +673,8 @@ export function PreFlightCheckModal({
 
         {/* Unmet Checklist warnings */}
         {!canStart && (
-          <div className="rounded border border-amber-200/80 bg-amber-50/60 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
-            <p className="font-medium">Complete all required checks before launching:</p>
+          <div className="rounded-xl border border-amber-200/80 bg-amber-50/60 p-3 text-xs text-amber-900 dark:border-amber-900/40 dark:bg-amber-950/30 dark:text-amber-300">
+            <p className="font-semibold">Complete all required checks before launching:</p>
             <ul className="mt-1 list-inside list-disc space-y-0.5 text-[11px] opacity-90">
               {failingChecks.map((check, i) => (
                 <li key={i}>{check}</li>
@@ -425,7 +689,7 @@ export function PreFlightCheckModal({
             type="button"
             onClick={handleStartInterview}
             disabled={!canStart || isStarting}
-            className="inline-flex h-9 items-center justify-center rounded bg-foreground px-5 text-xs font-medium text-background hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            className="inline-flex h-9 items-center justify-center rounded-xl bg-foreground px-5 text-xs font-semibold text-background hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm"
           >
             {isStarting ? "Entering Lockdown Mode..." : "Enter Lockdown & Start Interview"}
           </button>
