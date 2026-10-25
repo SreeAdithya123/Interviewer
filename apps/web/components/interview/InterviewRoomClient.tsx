@@ -17,6 +17,7 @@ import type { ProctoringEventType } from "@/lib/proctoring/types";
 import FaceProctor from "@/components/proctoring/FaceProctor";
 import ProctoringWarningModal from "@/components/proctoring/ProctoringWarningModal";
 import { StreamingVoiceIndicator } from "@/components/interview/StreamingVoiceIndicator";
+import { PreFlightCheckModal } from "@/components/interview/PreFlightCheckModal";
 import { ShieldCheck, ShieldAlert, Maximize2, Minimize2 } from "lucide-react";
 
 const CodingSandbox = dynamic(
@@ -33,6 +34,7 @@ const CodingSandbox = dynamic(
 );
 
 type Phase =
+  | "pre_flight"
   | "starting"
   | "thinking"
   | "awaiting_recording"
@@ -75,7 +77,7 @@ const ACKNOWLEDGEMENT_CLIPS = ["/audio/ack-1.wav", "/audio/ack-2.wav", "/audio/a
 export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const router = useRouter();
 
-  const [phase, setPhase] = useState<Phase>("starting");
+  const [phase, setPhase] = useState<Phase>("pre_flight");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [currentTurn, setCurrentTurn] = useState<EngineNextTurn | null>(null);
   const [answered, setAnswered] = useState<AnsweredTurn[]>([]);
@@ -130,17 +132,7 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
   const finishedRef = useRef(false);
   const lastAckClipIndexRef = useRef<number | null>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  // Guards the mount effect below against React's dev-mode double-invoke
-  // (mount -> cleanup -> mount again, same tick). A `cancelled` flag alone
-  // only stops a stale *result* from being applied — it doesn't stop the
-  // first invocation's call from actually reaching the server, which, for
-  // the first turn, really does create it and can really finish the
-  // interview server-side before that result is ever applied client-side.
-  // This ref isn't reset in the effect's cleanup, so it survives the
-  // synchronous remount and the second invocation skips firing a second
-  // real request; a genuine unmount (navigating away) gets a fresh
-  // component instance with a fresh ref regardless.
-  const mountEffectStartedRef = useRef(false);
+  const preFlightCompletedRef = useRef(false);
 
   const playAcknowledgementClip = useCallback(() => {
     if (ACKNOWLEDGEMENT_CLIPS.length === 0) return;
@@ -236,44 +228,60 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
     }
   }, [applyNextTurn, interviewId]);
 
-  // Kick off: the engine's own `/turns/next` flips a `pending` interview to
-  // `in_progress` and opens its first stage on the first call — no separate
-  // "start" step needed. Runs once per mount. Inline async IIFE (not a call
-  // to the `loadNextTurn` callback above) so `setPhase`'s first, synchronous
-  // call lives inside a plain function the effect itself owns, not inside a
-  // separately-defined useCallback — react-hooks/set-state-in-effect flags
-  // the latter shape as a cascading-render risk even though both run
-  // identically here; a `cancelled` guard still skips a late state update
-  // from an unmounted component the same way it did before this rewrite.
-  useEffect(() => {
-    if (mountEffectStartedRef.current) return;
-    mountEffectStartedRef.current = true;
-    let cancelled = false;
-    sessionStartRef.current = Date.now();
-    (async () => {
+  const handlePreFlightCompleted = useCallback(
+    async (stream: MediaStream, isExternalCamera: boolean) => {
+      if (preFlightCompletedRef.current) return;
+      preFlightCompletedRef.current = true;
+
+      // Stop the pre-flight testing tracks so subsequent proctoring and recording components acquire clean streams
+      stream.getTracks().forEach((track) => track.stop());
+
+      // If an external camera was verified, record an informational proctoring log
+      if (isExternalCamera) {
+        proctoring.recordEvent(
+          "tab_switched" as ProctoringEventType,
+          "External Camera Verified",
+          "Candidate hardware passed pre-flight verification with an external camera device.",
+          "low"
+        );
+      }
+
+      // Enter lockdown fullscreen mode
+      if (!proctoring.isFullscreen) {
+        try {
+          await proctoring.requestFullscreen();
+        } catch {
+          // Handled gracefully if browser restricts
+        }
+      }
+
+      // Begin session timer
+      sessionStartRef.current = Date.now();
       setPhase("thinking");
       setErrorMessage(null);
+
       try {
         const next = await getNextTurn(interviewId);
-        if (cancelled) return;
         await applyNextTurn(next);
       } catch (err) {
-        if (cancelled) return;
         setPhase("error");
         setErrorMessage(err instanceof Error ? err.message : "Could not load the next question.");
       }
-    })();
+    },
+    [applyNextTurn, interviewId, proctoring]
+  );
+
+  // Media resource cleanup on unmount
+  useEffect(() => {
     return () => {
-      cancelled = true;
       cleanupMediaResources();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: run once on mount
-  }, []);
+  }, [cleanupMediaResources]);
 
   // Overall 25-minute cap (BUILD_SPEC Part 4.5: "interviews at 25 minutes").
-  // The engine enforces this for real server-side too; this just moves the
-  // UI along without waiting for an answer that was never going to be submitted.
+  // Only counts down AFTER the pre-flight check passes and interview starts.
   useEffect(() => {
+    if (phase === "pre_flight") return;
     const id = setInterval(() => {
       const elapsed = Math.round((Date.now() - sessionStartRef.current) / 1000);
       const remaining = MAX_INTERVIEW_SECONDS - elapsed;
@@ -454,6 +462,17 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
     }
     if (phase === "recording") stopRecording(true);
     await finishNow();
+  }
+
+  if (phase === "pre_flight") {
+    return (
+      <div className="relative min-h-[85vh] flex items-center justify-center py-6">
+        <PreFlightCheckModal
+          interviewRole={interview.target_role || `${INTERVIEW_TYPE_LABELS[interview.interview_type]} Assessment`}
+          onAllPassedAndStart={handlePreFlightCompleted}
+        />
+      </div>
+    );
   }
 
   if (phase === "error") {
