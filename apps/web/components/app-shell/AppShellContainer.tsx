@@ -113,20 +113,41 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
 
         {/* User Scope Footer */}
         <div className="mt-auto border-t border-border/80 pt-4">
-          <div className="flex items-center gap-2.5 px-1">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-body text-xs font-medium text-foreground">
-              {initials}
-            </div>
+          <Link
+            href="/app/profile"
+            title="View & Edit Profile Settings"
+            className="group flex items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition-colors hover:bg-muted/60"
+          >
+            {profile.id_photo_url || profile.avatar_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={profile.id_photo_url || profile.avatar_url!}
+                alt={profile.full_name ?? "User"}
+                className="h-8 w-8 shrink-0 rounded-full border border-border/80 object-cover"
+              />
+            ) : (
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-body text-xs font-medium text-foreground">
+                {initials}
+              </div>
+            )}
             <div className="min-w-0 flex-1">
-              <p className="truncate font-body text-xs font-medium text-foreground">
+              <p className="truncate font-body text-xs font-medium text-foreground group-hover:text-primary transition-colors">
                 {profile.full_name ?? profile.email}
               </p>
-              <p className="font-body text-[11px] capitalize text-muted-foreground">
-                {roleName}
+              <p className="flex items-center gap-1 font-body text-[11px] capitalize text-muted-foreground">
+                <span>{roleName}</span>
+                {profile.id_verified_at && (
+                  <span
+                    className="font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
+                    title="Biometrically Verified"
+                  >
+                    ✓ ID Verified
+                  </span>
+                )}
               </p>
             </div>
-          </div>
-          <div className="mt-3 px-1">
+          </Link>
+          <div className="mt-2.5 px-1">
             <SignOutButton />
           </div>
         </div>
@@ -172,20 +193,38 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
             />
 
             <div className="mt-auto border-t border-border/80 pt-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-body text-xs font-medium text-foreground">
-                  {initials}
-                </div>
+              <Link
+                href="/app/profile"
+                onClick={() => setIsMobileOpen(false)}
+                className="group flex items-center gap-2.5 rounded-xl px-1.5 py-1.5 transition-colors hover:bg-muted/60"
+              >
+                {profile.id_photo_url || profile.avatar_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={profile.id_photo_url || profile.avatar_url!}
+                    alt={profile.full_name ?? "User"}
+                    className="h-8 w-8 shrink-0 rounded-full border border-border/80 object-cover"
+                  />
+                ) : (
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted font-body text-xs font-medium text-foreground">
+                    {initials}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-body text-xs font-medium text-foreground">
+                  <p className="truncate font-body text-xs font-medium text-foreground group-hover:text-primary transition-colors">
                     {profile.full_name ?? profile.email}
                   </p>
-                  <p className="font-body text-[11px] capitalize text-muted-foreground">
-                    {roleName}
+                  <p className="flex items-center gap-1 font-body text-[11px] capitalize text-muted-foreground">
+                    <span>{roleName}</span>
+                    {profile.id_verified_at && (
+                      <span className="font-mono text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ ID Verified
+                      </span>
+                    )}
                   </p>
                 </div>
-              </div>
-              <div className="mt-3">
+              </Link>
+              <div className="mt-2.5">
                 <SignOutButton />
               </div>
             </div>

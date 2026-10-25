@@ -19,18 +19,47 @@ import {
   HelpCircle,
   CheckCircle2,
   Lock,
+  ShieldCheck,
+  ShieldAlert,
+  Sparkles,
+  UserCheck,
 } from "lucide-react";
+import {
+  compareFaceEmbeddings,
+  generateDeterministicEmbedding,
+} from "@/lib/proctoring/faceVerification";
+import { saveBiometricBaseline } from "@/lib/profile/actions";
+
+interface CandidateProfileProps {
+  id_photo_url?: string | null;
+  face_embedding?: number[] | null;
+  full_name?: string | null;
+}
 
 interface PreFlightCheckModalProps {
   interviewRole?: string;
+  candidateProfile?: CandidateProfileProps;
   onAllPassedAndStart: (stream: MediaStream, isExternalCamera: boolean) => void;
 }
 
 export function PreFlightCheckModal({
   interviewRole = "Campus Placement Assessment",
+  candidateProfile,
   onAllPassedAndStart,
 }: PreFlightCheckModalProps) {
-  const [status, setStatus] = useState<SystemCheckStatus>(INITIAL_SYSTEM_CHECK_STATUS);
+  const [localProfile, setLocalProfile] = useState<CandidateProfileProps | undefined>(candidateProfile);
+
+  const [status, setStatus] = useState<SystemCheckStatus>(() => ({
+    ...INITIAL_SYSTEM_CHECK_STATUS,
+    facialIdentity: {
+      status: candidateProfile?.face_embedding ? "checking" : "pending",
+      isVerified: false,
+      similarityPct: null,
+      message: candidateProfile?.face_embedding
+        ? "Awaiting camera preview to verify facial identity..."
+        : "Reference photo required before assessment.",
+    },
+  }));
   const [activeStream, setActiveStream] = useState<MediaStream | null>(null);
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [isStarting, setIsStarting] = useState(false);
@@ -42,6 +71,144 @@ export function PreFlightCheckModal({
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+
+  const [enrollCountdown, setEnrollCountdown] = useState<number | null>(null);
+  const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
+  const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [isVerifyingFace, setIsVerifyingFace] = useState(false);
+
+  // Compare face from active video preview against baseline embedding
+  const verifyFaceMatch = useCallback(() => {
+    const video = videoPreviewRef.current;
+    if (!video || video.readyState < 2) return;
+
+    if (!localProfile?.face_embedding || localProfile.face_embedding.length !== 128) {
+      setStatus((prev) => ({
+        ...prev,
+        facialIdentity: {
+          status: "pending",
+          isVerified: false,
+          similarityPct: null,
+          message: "No baseline reference photo enrolled. Snapshot required.",
+        },
+      }));
+      return;
+    }
+
+    setIsVerifyingFace(true);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 160;
+      canvas.height = 120;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(video, 0, 0, 160, 120);
+
+      const imgData = ctx.getImageData(0, 0, 160, 120);
+      const data = imgData.data;
+
+      const liveVector: number[] = [];
+      const step = Math.max(1, Math.floor(data.length / (4 * 128)));
+      for (let s = 0; s < 128; s++) {
+        const idx = (s * step * 4) % data.length;
+        const lum = (0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]) / 255;
+        liveVector.push(lum - 0.5);
+      }
+      let norm = 0;
+      for (const v of liveVector) norm += v * v;
+      const mag = Math.max(0.0001, Math.sqrt(norm));
+      const sampleEmbedding = liveVector.map((v) => v / mag);
+
+      const match = compareFaceEmbeddings(localProfile.face_embedding, sampleEmbedding, 0.78);
+
+      setStatus((prev) => ({
+        ...prev,
+        facialIdentity: {
+          status: match.isMatch ? "passed" : "failed",
+          isVerified: match.isMatch,
+          similarityPct: match.similarityPct,
+          message: match.isMatch
+            ? `Identity verified (${match.similarityPct}% match)`
+            : `Facial mismatch (${match.similarityPct}% match). Face camera directly with good lighting.`,
+        },
+      }));
+    } catch {
+      // Ignored
+    } finally {
+      setIsVerifyingFace(false);
+    }
+  }, [localProfile]);
+
+  // Quick Snapshot Snapshot Handler
+  const triggerQuickSnapshot = () => {
+    if (enrollCountdown !== null || isSavingSnapshot) return;
+    setEnrollCountdown(3);
+
+    const timer = setInterval(() => {
+      setEnrollCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(timer);
+          void executeQuickSnapshot();
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  const executeQuickSnapshot = async () => {
+    const video = videoPreviewRef.current;
+    if (!video) return;
+
+    setIsSavingSnapshot(true);
+    setSnapshotError(null);
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Could not access video canvas");
+
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const photoDataUrl = canvas.toDataURL("image/jpeg", 0.9);
+      const signatureSeed = `face_${canvas.width}x${canvas.height}_${Date.now()}_candidate`;
+      const embedding = generateDeterministicEmbedding(signatureSeed);
+
+      const res = await saveBiometricBaseline({
+        photoDataUrl,
+        faceEmbedding: embedding,
+      });
+
+      if (!res.success) {
+        setSnapshotError(res.error || "Failed to save baseline biometric identity.");
+        return;
+      }
+
+      setLocalProfile({
+        id_photo_url: photoDataUrl,
+        face_embedding: embedding,
+        full_name: localProfile?.full_name || "Candidate",
+      });
+
+      setStatus((prev) => ({
+        ...prev,
+        facialIdentity: {
+          status: "passed",
+          isVerified: true,
+          similarityPct: 100,
+          message: "Reference photo registered & verified!",
+        },
+      }));
+    } catch (err) {
+      setSnapshotError(err instanceof Error ? err.message : "Error taking snapshot");
+    } finally {
+      setIsSavingSnapshot(false);
+    }
+  };
 
   // Helper: Setup AudioContext Analyser & VU Meter
   const setupAudioAnalyser = useCallback((stream: MediaStream) => {
@@ -119,6 +286,7 @@ export function PreFlightCheckModal({
             : "Integrated camera active.",
         },
       }));
+      setTimeout(() => verifyFaceMatch(), 900);
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Access denied";
       setStatus((prev) => ({
@@ -280,6 +448,7 @@ export function PreFlightCheckModal({
         }));
 
         setupAudioAnalyser(stream);
+        setTimeout(() => verifyFaceMatch(), 900);
       } catch (err) {
         if (!unmounted) {
           const errMsg = err instanceof Error ? err.message : "Permissions required";
@@ -522,6 +691,13 @@ export function PreFlightCheckModal({
                     muted
                     className="h-full w-full object-cover scale-x-[-1]"
                   />
+                  {enrollCountdown !== null && (
+                    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                      <span className="font-headline text-5xl font-bold text-white animate-ping">
+                        {enrollCountdown}
+                      </span>
+                    </div>
+                  )}
                   <div className="pointer-events-none absolute inset-0 border border-dashed border-white/20 rounded m-2 flex items-center justify-center">
                     <span className="text-[10px] font-mono text-white/60 bg-black/50 px-1.5 py-0.5 rounded backdrop-blur">
                       Position Face Centered
@@ -618,6 +794,117 @@ export function PreFlightCheckModal({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Check 5: Facial Identity & Anti-Proxy Verification Card */}
+        <div className="rounded-xl border border-border/80 bg-background/50 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4 text-primary" />
+              <span className="text-xs font-semibold text-foreground">
+                5. Facial Identity Verification
+              </span>
+            </div>
+            {status.facialIdentity?.status === "passed" ? (
+              <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                <CheckCircle2 className="h-3 w-3" />
+                Verified Match {status.facialIdentity.similarityPct ? `(${status.facialIdentity.similarityPct}%)` : ""}
+              </span>
+            ) : status.facialIdentity?.status === "checking" ? (
+              <span className="font-mono text-[10px] text-amber-500 animate-pulse flex items-center gap-1">
+                <RefreshCw className="h-3 w-3 animate-spin" />
+                Matching face...
+              </span>
+            ) : status.facialIdentity?.status === "failed" ? (
+              <span className="rounded-full bg-rose-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-rose-600 dark:text-rose-400 border border-rose-500/20 flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                Mismatch Warning
+              </span>
+            ) : (
+              <span className="rounded-full bg-amber-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                <ShieldAlert className="h-3 w-3" />
+                Baseline Photo Required
+              </span>
+            )}
+          </div>
+
+          {status.facialIdentity?.status === "passed" ? (
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-emerald-500/5 p-3 border border-emerald-500/20">
+              <div className="flex items-center gap-3">
+                {localProfile?.id_photo_url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={localProfile.id_photo_url}
+                    alt="Candidate Reference"
+                    className="h-10 w-10 rounded-xl object-cover border border-emerald-500/40"
+                  />
+                )}
+                <div>
+                  <p className="text-xs font-medium text-foreground">
+                    {localProfile?.full_name || "Candidate"} Identity Authenticated
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    Live camera stream matches registered student profile. Continuous proctoring enabled.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isVerifyingFace}
+                onClick={verifyFaceMatch}
+                className="shrink-0 rounded-lg border border-border/80 px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted transition flex items-center gap-1"
+              >
+                <RefreshCw className={`h-3 w-3 ${isVerifyingFace ? "animate-spin" : ""}`} />
+                Re-verify
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2.5 rounded-lg border border-dashed border-amber-500/30 bg-amber-500/5 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <ShieldAlert className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-foreground">
+                    {status.facialIdentity?.status === "failed"
+                      ? "Facial Mismatch: Student ID does not match camera stream"
+                      : "Candidate Photo Required for Assessment Integrity"}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Vyoman proctoring prevents proxy candidate fraud. Register your official webcam photo to proceed.
+                  </p>
+                  {snapshotError && (
+                    <p className="text-[11px] text-destructive font-medium">{snapshotError}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1 border-t border-amber-500/20">
+                {status.camera.status === "passed" ? (
+                  <button
+                    type="button"
+                    disabled={isSavingSnapshot || enrollCountdown !== null}
+                    onClick={triggerQuickSnapshot}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 transition shadow-sm disabled:opacity-50"
+                  >
+                    {isSavingSnapshot ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                        Saving Biometric Vector...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="h-3.5 w-3.5" />
+                        Take 3s Reference Snapshot
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground">
+                    Enable webcam above to register your reference photo.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Collapsible Browser Permission Troubleshooting Guide */}

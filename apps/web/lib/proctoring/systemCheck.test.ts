@@ -50,10 +50,26 @@ describe("Pre-Flight System Check & Hardware Gate", () => {
       camera: { status: "passed", hasPermission: true, isExternal: false, deviceName: "Integrated Webcam", devicesCount: 1, message: "Active" },
       microphone: { status: "passed", hasPermission: true, deviceName: "Built-in Mic", audioDetected: true, audioLevelPct: 35, message: "Active" },
       lockscreen: { status: "passed", isFullscreen: true, acknowledged: true, message: "Lockdown Ready" },
+      facialIdentity: { status: "passed", isVerified: true, similarityPct: 96, message: "Verified" },
     };
 
     const ready = isPreFlightReadyToStart(allPassedStatus);
     expect(ready.canStart).toBe(true);
     expect(ready.failingChecks.length).toBe(0);
+  });
+
+  it("blocks starting when facial identity verification fails", () => {
+    const facialFailStatus: SystemCheckStatus = {
+      internet: { status: "passed", latencyMs: 38, isOnline: true, message: "OK" },
+      display: { status: "passed", hasExternalDisplay: false, screenCount: 1, message: "Single display verified" },
+      camera: { status: "passed", hasPermission: true, isExternal: false, deviceName: "Integrated Webcam", devicesCount: 1, message: "Active" },
+      microphone: { status: "passed", hasPermission: true, deviceName: "Built-in Mic", audioDetected: true, audioLevelPct: 35, message: "Active" },
+      lockscreen: { status: "passed", isFullscreen: true, acknowledged: true, message: "Lockdown Ready" },
+      facialIdentity: { status: "failed", isVerified: false, similarityPct: 42, message: "Mismatch" },
+    };
+
+    const ready = isPreFlightReadyToStart(facialFailStatus);
+    expect(ready.canStart).toBe(false);
+    expect(ready.failingChecks).toContain("Facial identity verification (ensure face is visible or enroll baseline photo)");
   });
 });

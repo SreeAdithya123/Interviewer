@@ -67,6 +67,7 @@ function getEventCategory(type: ProctoringEventType): "screen" | "visual" | "aud
     case "face_not_visible":
     case "multiple_faces_detected":
     case "looking_away":
+    case "impersonation_suspected":
       return "visual";
     case "audio_anomaly":
       return "audio";

@@ -15,6 +15,15 @@ export interface Profile {
   email: string;
   phone: string | null;
   avatar_url: string | null;
+  bio?: string | null;
+  target_role?: string | null;
+  target_companies?: string | null;
+  linkedin_url?: string | null;
+  github_url?: string | null;
+  portfolio_url?: string | null;
+  id_photo_url?: string | null;
+  face_embedding?: number[] | null;
+  id_verified_at?: string | null;
   onboarded_at: string | null;
   created_at: string;
   updated_at: string;

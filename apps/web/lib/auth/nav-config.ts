@@ -25,6 +25,7 @@ const STUDENT_NAV: NavItem[] = [
   { label: "Resume", href: "/app/resume" },
   { label: "Chat", href: "/app/chat" },
   { label: "History", href: "/app/history" },
+  { label: "Profile", href: "/app/profile" },
 ];
 
 const COLLEGE_ADMIN_NAV: NavItem[] = [

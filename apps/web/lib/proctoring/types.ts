@@ -15,6 +15,7 @@ export type ProctoringEventType =
   | "face_not_visible"
   | "multiple_faces_detected"
   | "looking_away"
+  | "impersonation_suspected"
   | "audio_anomaly";
 
 export type EventSeverity = "low" | "medium" | "high";

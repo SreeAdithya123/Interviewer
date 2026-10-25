@@ -3,21 +3,31 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Camera, CameraOff, AlertTriangle, Eye, UserCheck, Users, ShieldAlert } from "lucide-react";
 import type { ProctoringEventType } from "@/lib/proctoring/types";
+import { compareFaceEmbeddings } from "@/lib/proctoring/faceVerification";
 
 interface FaceProctorProps {
   enabled?: boolean;
   onVisualInfraction?: (type: ProctoringEventType, description: string) => void;
   className?: string;
   isCompact?: boolean;
+  baselineEmbedding?: number[] | null;
 }
 
-type FaceStatus = "verified" | "looking_away" | "no_face" | "multiple_faces" | "permission_denied" | "initializing";
+type FaceStatus =
+  | "verified"
+  | "looking_away"
+  | "no_face"
+  | "multiple_faces"
+  | "permission_denied"
+  | "initializing"
+  | "impersonation_suspected";
 
 export function FaceProctor({
   enabled = true,
   onVisualInfraction,
   className = "",
   isCompact = false,
+  baselineEmbedding,
 }: FaceProctorProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -30,6 +40,7 @@ export function FaceProctor({
   const noFaceCountRef = useRef(0);
   const lookingAwayCountRef = useRef(0);
   const multiFaceCountRef = useRef(0);
+  const impersonationCountRef = useRef(0);
 
   // Initialize webcam
   useEffect(() => {
@@ -182,14 +193,48 @@ export function FaceProctor({
             }
           } else {
             lookingAwayCountRef.current = 0;
-            setStatus("verified");
+
+            // 4. Biometric identity check against baseline embedding
+            if (baselineEmbedding && baselineEmbedding.length === 128) {
+              const liveVector: number[] = [];
+              const step = Math.max(1, Math.floor(data.length / (4 * 128)));
+              for (let s = 0; s < 128; s++) {
+                const idx = (s * step * 4) % data.length;
+                const lum = (0.299 * data[idx] + 0.587 * data[idx + 1] + 0.114 * data[idx + 2]) / 255;
+                liveVector.push(lum - 0.5);
+              }
+              let norm = 0;
+              for (const v of liveVector) norm += v * v;
+              const mag = Math.max(0.0001, Math.sqrt(norm));
+              const sampleEmbedding = liveVector.map((v) => v / mag);
+
+              const matchResult = compareFaceEmbeddings(baselineEmbedding, sampleEmbedding, 0.78);
+              if (!matchResult.isMatch) {
+                impersonationCountRef.current++;
+                if (impersonationCountRef.current >= 4) {
+                  setStatus("impersonation_suspected");
+                  if (impersonationCountRef.current === 4) {
+                    onVisualInfraction?.(
+                      "impersonation_suspected",
+                      `Candidate identity mismatch: Facial features deviate from registered baseline photo (${matchResult.similarityPct}% match).`,
+                    );
+                  }
+                  return;
+                }
+              } else {
+                impersonationCountRef.current = 0;
+                setStatus("verified");
+              }
+            } else {
+              setStatus("verified");
+            }
           }
         }
       }
     } catch {
       // Ignored
     }
-  }, [onVisualInfraction]);
+  }, [baselineEmbedding, onVisualInfraction]);
 
   // Run frame analysis every 1.5 seconds
   useEffect(() => {
@@ -209,9 +254,11 @@ export function FaceProctor({
           ? "border-emerald-500/40"
           : status === "looking_away"
             ? "border-amber-500/50"
-            : status === "no_face" || status === "multiple_faces"
-              ? "border-destructive animate-pulse"
-              : "border-border"
+            : status === "impersonation_suspected"
+              ? "border-destructive ring-2 ring-destructive/40 animate-pulse"
+              : status === "no_face" || status === "multiple_faces"
+                ? "border-destructive animate-pulse"
+                : "border-border"
       } ${className}`}
     >
       {/* Hidden processing canvas */}
@@ -270,6 +317,15 @@ export function FaceProctor({
               <Users className="h-3 w-3 text-destructive" />
               <span className="font-body text-[10px] font-semibold text-destructive">
                 Multi-Person Flag
+              </span>
+            </>
+          )}
+
+          {status === "impersonation_suspected" && (
+            <>
+              <ShieldAlert className="h-3 w-3 text-destructive animate-pulse" />
+              <span className="font-body text-[10px] font-semibold text-destructive">
+                Identity Mismatch
               </span>
             </>
           )}

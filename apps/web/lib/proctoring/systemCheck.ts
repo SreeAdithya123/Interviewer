@@ -39,6 +39,12 @@ export interface SystemCheckStatus {
     acknowledged: boolean;
     message: string;
   };
+  facialIdentity?: {
+    status: "pending" | "checking" | "passed" | "failed";
+    isVerified: boolean;
+    similarityPct: number | null;
+    message: string;
+  };
 }
 
 export const INITIAL_SYSTEM_CHECK_STATUS: SystemCheckStatus = {
@@ -251,6 +257,9 @@ export function isPreFlightReadyToStart(status: SystemCheckStatus): {
   }
   if (!status.lockscreen.acknowledged) {
     failingChecks.push("Lockdown screen mode acknowledgement");
+  }
+  if (status.facialIdentity && status.facialIdentity.status !== "passed") {
+    failingChecks.push("Facial identity verification (ensure face is visible or enroll baseline photo)");
   }
 
   return {

@@ -74,7 +74,16 @@ const ORT_VERSION = "1.14.0";
  * once and bundled as static files — not a live per-turn synthesis call. */
 const ACKNOWLEDGEMENT_CLIPS = ["/audio/ack-1.wav", "/audio/ack-2.wav", "/audio/ack-3.wav"];
 
-export function InterviewRoomClient({ interview }: { interview: Interview }) {
+interface InterviewRoomClientProps {
+  interview: Interview;
+  candidateProfile?: {
+    id_photo_url?: string | null;
+    face_embedding?: number[] | null;
+    full_name?: string | null;
+  };
+}
+
+export function InterviewRoomClient({ interview, candidateProfile }: InterviewRoomClientProps) {
   const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>("pre_flight");
@@ -107,7 +116,9 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
           ? "Multiple Faces in Frame"
           : type === "looking_away"
             ? "Gaze Averted / Looking Away"
-            : "Candidate Not in Frame";
+            : type === "impersonation_suspected"
+              ? "Facial Impersonation Suspected"
+              : "Candidate Not in Frame";
       proctoring.recordEvent(type, label, description, "high");
     },
     [proctoring],
@@ -469,6 +480,7 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
       <div className="relative min-h-[85vh] flex items-center justify-center py-6">
         <PreFlightCheckModal
           interviewRole={interview.target_role || `${INTERVIEW_TYPE_LABELS[interview.interview_type]} Assessment`}
+          candidateProfile={candidateProfile}
           onAllPassedAndStart={handlePreFlightCompleted}
         />
       </div>
@@ -610,6 +622,7 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
             {/* Live AI Face Proctor Preview */}
             <FaceProctor
               onVisualInfraction={handleVisualInfraction}
+              baselineEmbedding={candidateProfile?.face_embedding}
               isCompact
               className="h-44 w-full"
             />
@@ -764,6 +777,7 @@ export function InterviewRoomClient({ interview }: { interview: Interview }) {
         <div className="space-y-6">
           <FaceProctor
             onVisualInfraction={handleVisualInfraction}
+            baselineEmbedding={candidateProfile?.face_embedding}
             className="h-52 w-full max-w-sm mx-auto"
           />
           <Card>

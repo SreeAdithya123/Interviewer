@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getCurrentProfile } from "@/lib/auth/current-profile";
 import { InterviewRoomClient } from "@/components/interview/InterviewRoomClient";
 import type { Interview } from "@/lib/interview/types";
 
@@ -76,6 +77,8 @@ export default async function InterviewRoomPage({ params }: InterviewRoomPagePro
     );
   }
 
+  const profile = await getCurrentProfile();
+
   return (
     <Suspense
       fallback={
@@ -87,7 +90,10 @@ export default async function InterviewRoomPage({ params }: InterviewRoomPagePro
         </div>
       }
     >
-      <InterviewRoomClient interview={interview as Interview} />
+      <InterviewRoomClient
+        interview={interview as Interview}
+        candidateProfile={profile || undefined}
+      />
     </Suspense>
   );
 }

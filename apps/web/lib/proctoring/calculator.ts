@@ -23,6 +23,7 @@ const EVENT_PENALTIES: Record<ProctoringEventType, number> = {
   face_not_visible: 8,
   multiple_faces_detected: 25,
   looking_away: 5,
+  impersonation_suspected: 30,
   audio_anomaly: 6,
 };
 
@@ -81,6 +82,7 @@ export function calculateProctoringSummary(
       case "face_not_visible":
       case "multiple_faces_detected":
       case "looking_away":
+      case "impersonation_suspected":
         faceViolationsCount++;
         visualPenalty += penalty;
         break;

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseAtsWebhookPayload, verifyAtsWebhookSignature } from "@/lib/ats/connector";
 import type { AtsProvider } from "@/lib/ats/types";
 
-export const runtime = "edge";
-
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ provider: string }> }
