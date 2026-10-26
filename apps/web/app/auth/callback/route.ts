@@ -58,15 +58,27 @@ export async function GET(request: Request) {
   let authError: Error | null = null;
   let user = null;
 
-  if (code) {
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  if (token_hash) {
+    // token_hash flow (implicit) — self-contained, no stored verifier needed.
+    // Works cross-tab and cross-device. Type defaults to 'email' if omitted.
+    const resolvedType = (type ?? "email") as EmailOtpType;
+    const { data, error } = await supabase.auth.verifyOtp({ token_hash, type: resolvedType });
     if (error) {
-      authError = error;
+      // Fallback: try 'magiclink' type if 'email' failed
+      const fallback = await supabase.auth.verifyOtp({ token_hash, type: "magiclink" });
+      if (!fallback.error && fallback.data?.user) {
+        user = fallback.data.user;
+      } else {
+        authError = error;
+      }
     } else {
       user = data.user;
     }
-  } else if (token_hash && type) {
-    const { data, error } = await supabase.auth.verifyOtp({ token_hash, type });
+  } else if (code) {
+    // PKCE flow — kept as fallback for OAuth providers (Google, GitHub, etc.)
+    // Note: this will fail with "PKCE code verifier not found" if the magic
+    // link was clicked in a different browser tab. Use token_hash flow for email.
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     if (error) {
       authError = error;
     } else {

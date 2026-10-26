@@ -1,7 +1,24 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { createClient } from "@/lib/supabase/client";
+import { createBrowserClient } from "@supabase/ssr";
+
+/**
+ * Creates a Supabase browser client with the auth flow forced to
+ * 'pkce' disabled — we pass flowType:'implicit' so signInWithOtp
+ * sends a token_hash in the link rather than a PKCE `code`.
+ * token_hash is self-contained: it does NOT require the browser
+ * that opened the link to have the code_verifier in localStorage,
+ * fixing the "PKCE code verifier not found" error when the link
+ * opens in a new tab.
+ */
+function createImplicitClient() {
+  return createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    { auth: { flowType: "implicit" } }
+  );
+}
 
 type Status = "idle" | "submitting" | "sent" | "error";
 
@@ -27,10 +44,13 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
     setError(null);
     setVerifyError(null);
 
-    const supabase = createClient();
+    const supabase = createImplicitClient();
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email,
       options: {
+        // emailRedirectTo is intentionally omitted — with implicit/token_hash
+        // flow the link already contains the token; we don't need a redirect
+        // that depends on a stored PKCE verifier.
         emailRedirectTo: `${window.location.origin}/auth/callback`,
         shouldCreateUser: mode === "signup",
       },
@@ -57,7 +77,7 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
     setVerifying(true);
     setVerifyError(null);
 
-    const supabase = createClient();
+    const supabase = createImplicitClient();
     let { data, error: vErr } = await supabase.auth.verifyOtp({
       email,
       token: cleanToken,
@@ -96,7 +116,7 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
 
   async function handleResend() {
     setVerifyError(null);
-    const supabase = createClient();
+    const supabase = createImplicitClient();
     const { error: otpError } = await supabase.auth.signInWithOtp({
       email,
       options: {
