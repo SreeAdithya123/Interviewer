@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/auth/current-profile";
 import { readinessBand, READINESS_LABEL } from "@/lib/readiness";
 import StatusBadge from "@/components/app-shell/StatusBadge";
+import { TourBanner } from "@/components/app-shell/TourBanner";
 
 interface StudentDashboardProps {
   profile: Profile;
@@ -64,6 +65,9 @@ export default async function StudentDashboard({ profile }: StudentDashboardProp
 
   return (
     <div className="mx-auto max-w-6xl space-y-6">
+      {/* First-time platform tour banner */}
+      <TourBanner />
+
       {/* Title & Screen's One Finding & Primary Action */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>

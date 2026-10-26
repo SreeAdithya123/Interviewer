@@ -7,6 +7,7 @@ import type { Profile } from "@/lib/auth/current-profile";
 import type { NavItem } from "@/lib/auth/nav-config";
 import AppSidebarNav from "@/components/app-shell/AppSidebarNav";
 import SignOutButton from "@/components/app-shell/SignOutButton";
+import { TourTrigger } from "@/components/app-shell/TourTrigger";
 
 interface AppShellContainerProps {
   profile: Profile;
@@ -147,7 +148,8 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
               </p>
             </div>
           </Link>
-          <div className="mt-2.5 px-1">
+          <div className="mt-2.5 px-1 flex flex-col gap-1.5">
+            <TourTrigger className="w-full justify-start" />
             <SignOutButton />
           </div>
         </div>
@@ -224,7 +226,8 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
                   </p>
                 </div>
               </Link>
-              <div className="mt-2.5">
+              <div className="mt-2.5 flex flex-col gap-1.5">
+                <TourTrigger className="w-full justify-start" />
                 <SignOutButton />
               </div>
             </div>
@@ -277,6 +280,7 @@ export function AppShellContainer({ profile, navItems, children }: AppShellConta
             <span className="hidden sm:inline-block font-body text-xs text-muted-foreground">
               {profile.email}
             </span>
+            <TourTrigger compact className="hidden sm:inline-flex" />
             <SignOutButton />
           </div>
         </header>
