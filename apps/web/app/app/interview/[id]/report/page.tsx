@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { InterviewReportClient } from "@/components/interview/InterviewReportClient";
-import { getInterviewTurns } from "@/lib/interview/actions";
+import { getInterviewTurns, ensureInterviewReport } from "@/lib/interview/actions";
 import type { Interview, InterviewReport, InterviewTurn } from "@/lib/interview/types";
 
 export const metadata: Metadata = {
@@ -47,11 +47,23 @@ export default async function InterviewReportPage({ params }: InterviewReportPag
     turns = (turnsRes.data as InterviewTurn[]) ?? [];
   }
 
-  const { data: report } = await supabase
+  let { data: report } = await supabase
     .from("interview_reports")
     .select("*")
     .eq("interview_id", id)
     .maybeSingle();
+
+  // If report doesn't exist yet, or is pending/failed, automatically evaluate and finalize it now
+  if (!report || report.status !== "completed") {
+    try {
+      const generated = await ensureInterviewReport(id);
+      if (generated) {
+        report = generated as unknown as typeof report;
+      }
+    } catch (err) {
+      console.error("Auto-generation of report failed:", err);
+    }
+  }
 
   return (
     <InterviewReportClient

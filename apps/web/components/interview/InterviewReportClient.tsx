@@ -176,10 +176,24 @@ export function InterviewReportClient({
       )}
 
       {!report && interview.status !== "completed" && (
-        <Card>
-          <p className="font-body text-xs text-muted-foreground">
-            This interview session has not been concluded yet.
-          </p>
+        <Card className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5">
+          <div>
+            <p className="font-body text-xs font-semibold text-foreground">
+              Interview session awaiting conclusion
+            </p>
+            <p className="mt-0.5 font-body text-xs text-muted-foreground">
+              You can generate your performance report and rubric scores now.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRetry}
+            disabled={retrying}
+            className="btn-primary shrink-0 text-xs py-2 px-4 inline-flex items-center gap-2"
+          >
+            <RotateCw className={`h-3.5 w-3.5 ${retrying ? "animate-spin" : ""}`} />
+            <span>{retrying ? "Evaluating now..." : "Conclude & Generate Report"}</span>
+          </button>
         </Card>
       )}
 
