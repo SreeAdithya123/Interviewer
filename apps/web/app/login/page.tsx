@@ -30,9 +30,9 @@ export default async function LoginPage({
           <Link href="/" className="font-headline text-lg text-foreground">
             Vyoman Interviewer
           </Link>
-          <h1 className="mt-4 text-2xl font-semibold text-foreground">Log in</h1>
+          <h1 className="mt-4 text-2xl font-semibold text-foreground">Sign in</h1>
           <p className="mt-2 font-body text-sm text-muted-foreground">
-            Sign in with an email link or 6-digit verification code.
+            Sign in with Google or receive a 6-digit verification code.
           </p>
         </div>
 

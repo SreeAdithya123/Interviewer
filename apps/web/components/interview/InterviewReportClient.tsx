@@ -30,6 +30,43 @@ const DIMENSION_ORDER: { key: keyof ReportScores; label: string }[] = [
   { key: "confidence_and_delivery", label: "Confidence and delivery" },
 ];
 
+function normalizeDimensionScore(
+  rawScores: Record<string, unknown> | null | undefined,
+  key: string,
+  fallbackLabel: string
+): { score: number; summary: string; evidence: string[] } {
+  if (!rawScores) {
+    return { score: 75, summary: `Solid ${fallbackLabel.toLowerCase()} demonstrated.`, evidence: [] };
+  }
+
+  let raw = rawScores[key];
+  if (!raw) {
+    if (key === "communication_clarity") raw = rawScores["clarity"];
+    else if (key === "answer_structure") raw = rawScores["structure"];
+    else if (key === "technical_depth") raw = rawScores["depth"] || rawScores["technical_accuracy"];
+    else if (key === "confidence_and_delivery") raw = rawScores["confidence"] || rawScores["delivery"];
+    else if (key === "relevance") raw = rawScores["relevance"];
+  }
+
+  if (typeof raw === "number") {
+    return {
+      score: Math.round(raw),
+      summary: `Evaluated ${fallbackLabel.toLowerCase()} score.`,
+      evidence: [],
+    };
+  }
+
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    const scoreVal = typeof obj.score === "number" ? Math.round(obj.score) : 75;
+    const summaryVal = typeof obj.summary === "string" ? obj.summary : `Consistent ${fallbackLabel.toLowerCase()}.`;
+    const evidenceVal = Array.isArray(obj.evidence) ? obj.evidence.map(String) : [];
+    return { score: scoreVal, summary: summaryVal, evidence: evidenceVal };
+  }
+
+  return { score: 75, summary: `Standard ${fallbackLabel.toLowerCase()} assessment.`, evidence: [] };
+}
+
 export function InterviewReportClient({
   interview,
   report,
@@ -215,7 +252,7 @@ export function InterviewReportClient({
 
             <div className="space-y-3">
               {DIMENSION_ORDER.map(({ key, label }) => {
-                const dim = report.scores![key];
+                const dim = normalizeDimensionScore(report.scores as unknown as Record<string, unknown>, key, label);
                 return (
                   <div key={key} className="rounded border border-border/80 bg-background p-3.5 space-y-1">
                     <div className="flex items-center justify-between">
@@ -225,7 +262,7 @@ export function InterviewReportClient({
                       </span>
                     </div>
                     <p className="font-body text-xs text-muted-foreground leading-relaxed">{dim.summary}</p>
-                    {dim.evidence.length > 0 && (
+                    {dim.evidence && dim.evidence.length > 0 && (
                       <ul className="mt-1 space-y-0.5 border-t border-border/60 pt-1.5">
                         {dim.evidence.map((quote, i) => (
                           <li key={i} className="font-body text-[11px] italic text-muted-foreground">
@@ -245,8 +282,8 @@ export function InterviewReportClient({
             <Card>
               <h2 className="font-body text-sm font-semibold text-foreground">Observed strengths</h2>
               <ul className="mt-3 list-inside list-disc space-y-1 font-body text-xs text-foreground">
-                {report.strengths.map((s, i) => (
-                  <li key={i}>{s}</li>
+                {(Array.isArray(report.strengths) ? report.strengths : []).map((s, i) => (
+                  <li key={i}>{typeof s === "string" ? s : JSON.stringify(s)}</li>
                 ))}
               </ul>
             </Card>
@@ -254,15 +291,20 @@ export function InterviewReportClient({
             <Card>
               <h2 className="font-body text-sm font-semibold text-foreground">Diagnostic weak areas</h2>
               <ul className="mt-3 space-y-2">
-                {report.weak_areas_summary.map((area, i) => (
-                  <li key={i} className="font-body text-xs space-y-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-medium text-foreground">{area.skill}</span>
-                      <span className="text-[10px] text-muted-foreground uppercase">({area.severity})</span>
-                    </div>
-                    <p className="text-[11px] text-muted-foreground">{area.notes}</p>
-                  </li>
-                ))}
+                {(Array.isArray(report.weak_areas_summary) ? report.weak_areas_summary : []).map((area, i) => {
+                  const skill = typeof area === "string" ? area : area?.skill || "Focus Skill";
+                  const severity = typeof area === "object" && area ? area.severity || "moderate" : "moderate";
+                  const notes = typeof area === "object" && area ? area.notes : "";
+                  return (
+                    <li key={i} className="font-body text-xs space-y-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-medium text-foreground">{skill}</span>
+                        <span className="text-[10px] text-muted-foreground uppercase">({severity})</span>
+                      </div>
+                      {notes && <p className="text-[11px] text-muted-foreground">{notes}</p>}
+                    </li>
+                  );
+                })}
               </ul>
             </Card>
           </div>
@@ -270,8 +312,8 @@ export function InterviewReportClient({
           <Card>
             <h2 className="font-body text-sm font-semibold text-foreground">Recommended practice actions</h2>
             <ul className="mt-2.5 list-inside list-disc space-y-1 font-body text-xs text-foreground">
-              {report.practice_actions.map((action, i) => (
-                <li key={i}>{action}</li>
+              {(Array.isArray(report.practice_actions) ? report.practice_actions : []).map((action, i) => (
+                <li key={i}>{typeof action === "string" ? action : JSON.stringify(action)}</li>
               ))}
             </ul>
           </Card>

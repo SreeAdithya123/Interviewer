@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, ArrowUpRight } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Video, FileSearch, Sparkles, AlertCircle, CheckCircle2, TrendingUp, Layers } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import type { Profile } from "@/lib/auth/current-profile";
 import { readinessBand, READINESS_LABEL } from "@/lib/readiness";
@@ -64,144 +64,158 @@ export default async function StudentDashboard({ profile }: StudentDashboardProp
   const completedCount = interviews.filter((i) => i.status === "completed").length;
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
+    <div className="mx-auto max-w-6xl space-y-7">
       {/* First-time platform tour banner */}
       <TourBanner />
 
-      {/* Title & Screen's One Finding & Primary Action */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      {/* Header & Quick Action */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-border/60 pb-6">
         <div>
-          <h1 className="font-headline text-2xl font-semibold tracking-tight text-foreground">
-            Placement Overview
-          </h1>
-          <p className="mt-1 font-body text-sm text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <h1 className="font-headline text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+              Placement Dashboard
+            </h1>
+            <span className="rounded-full bg-primary/10 px-2.5 py-0.5 font-mono text-[11px] font-semibold text-primary">
+              Live
+            </span>
+          </div>
+          <p className="mt-1 font-body text-xs sm:text-sm text-muted-foreground">
             {latestScore !== null ? (
               <>
-                Readiness score:{" "}
-                <span className="font-medium text-foreground">{latestScore} / 100</span> ·{" "}
-                <span>{READINESS_LABEL[currentBand]}</span>
-                {weakAreas.length > 0 && ` · ${weakAreas.length} diagnostic areas flagged`}
+                Placement readiness:{" "}
+                <span className="font-semibold text-foreground">{latestScore} / 100</span> ·{" "}
+                <span className="font-medium text-primary">{READINESS_LABEL[currentBand]}</span>
+                {weakAreas.length > 0 && ` · ${weakAreas.length} diagnostic areas to practice`}
               </>
             ) : (
-              "No mock interviews completed yet · Complete your first technical mock to compute readiness score."
+              "Take your first 10-minute AI mock interview to benchmark your placement readiness."
             )}
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
           <Link
             href="/app/interview"
-            className="inline-flex h-9 items-center justify-center rounded-md bg-foreground px-4 font-body text-xs font-medium text-background transition-colors hover:bg-foreground/90"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-2xl bg-primary px-5 font-body text-xs font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 hover:scale-[1.02] active:scale-[0.98]"
           >
-            Start mock interview
+            <Video className="h-4 w-4" />
+            <span>Start Mock Interview</span>
           </Link>
         </div>
       </div>
 
-      {/* KPI Strip: One container divided by 1px rules */}
-      <div className="grid grid-cols-2 divide-y border border-border/80 bg-card rounded-lg sm:grid-cols-4 sm:divide-y-0 sm:divide-x">
-        <div className="p-4 sm:p-5">
-          <p className="font-body text-xs font-medium text-muted-foreground">
-            Overall readiness
-          </p>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="font-metric text-2xl font-semibold tracking-tight text-foreground tabular-nums sm:text-3xl">
+      {/* Modern KPI Cards Grid */}
+      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+        {/* KPI 1 */}
+        <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-card p-5 shadow-soft transition hover:border-primary/40">
+          <div className="flex items-center justify-between">
+            <p className="font-body text-xs font-medium text-muted-foreground">Overall Readiness</p>
+            <TrendingUp className="h-4 w-4 text-primary" />
+          </div>
+          <div className="mt-3 flex items-baseline gap-1">
+            <span className="font-metric text-3xl font-bold tracking-tight text-foreground tabular-nums sm:text-4xl">
               {latestScore !== null ? latestScore : "—"}
             </span>
             {latestScore !== null && (
               <span className="font-body text-xs text-muted-foreground">/ 100</span>
             )}
           </div>
-          <p className="mt-1 font-body text-[11px] text-muted-foreground">
-            {latestScore !== null ? "target 75+ for campus drives" : "complete 1st mock"}
+          <p className="mt-1.5 font-body text-[11px] text-muted-foreground">
+            {latestScore !== null ? "Target 75+ for top companies" : "Complete first mock round"}
           </p>
         </div>
 
-        <div className="p-4 sm:p-5">
-          <p className="font-body text-xs font-medium text-muted-foreground">
-            Mock interviews
-          </p>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="font-metric text-2xl font-semibold tracking-tight text-foreground tabular-nums sm:text-3xl">
+        {/* KPI 2 */}
+        <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-card p-5 shadow-soft transition hover:border-primary/40">
+          <div className="flex items-center justify-between">
+            <p className="font-body text-xs font-medium text-muted-foreground">Mock Sessions</p>
+            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+          </div>
+          <div className="mt-3 flex items-baseline gap-1.5">
+            <span className="font-metric text-3xl font-bold tracking-tight text-foreground tabular-nums sm:text-4xl">
               {completedCount}
             </span>
-            <span className="font-body text-xs text-muted-foreground">completed</span>
+            <span className="font-body text-xs text-muted-foreground">done</span>
           </div>
-          <p className="mt-1 font-body text-[11px] text-muted-foreground">
-            {interviews.length} sessions started
+          <p className="mt-1.5 font-body text-[11px] text-muted-foreground">
+            {interviews.length} sessions initiated
           </p>
         </div>
 
-        <div className="p-4 sm:p-5">
-          <p className="font-body text-xs font-medium text-muted-foreground">
-            Weak areas
-          </p>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="font-metric text-2xl font-semibold tracking-tight text-foreground tabular-nums sm:text-3xl">
+        {/* KPI 3 */}
+        <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-card p-5 shadow-soft transition hover:border-primary/40">
+          <div className="flex items-center justify-between">
+            <p className="font-body text-xs font-medium text-muted-foreground">Weak Areas</p>
+            <AlertCircle className="h-4 w-4 text-amber-500" />
+          </div>
+          <div className="mt-3 flex items-baseline gap-1.5">
+            <span className="font-metric text-3xl font-bold tracking-tight text-foreground tabular-nums sm:text-4xl">
               {weakAreas.length}
             </span>
             <span className="font-body text-xs text-muted-foreground">flagged</span>
           </div>
-          <p className="mt-1 font-body text-[11px] text-muted-foreground">
-            {weakAreas.length === 0 ? "all diagnostic topics clear" : "action required before drives"}
+          <p className="mt-1.5 font-body text-[11px] text-muted-foreground">
+            {weakAreas.length === 0 ? "All topics evaluated cleanly" : "Needs review before drive"}
           </p>
         </div>
 
-        <div className="p-4 sm:p-5">
-          <p className="font-body text-xs font-medium text-muted-foreground">
-            Resumes on file
-          </p>
-          <div className="mt-2 flex items-baseline gap-1">
-            <span className="font-metric text-2xl font-semibold tracking-tight text-foreground tabular-nums sm:text-3xl">
+        {/* KPI 4 */}
+        <div className="relative overflow-hidden rounded-3xl border border-border/80 bg-card p-5 shadow-soft transition hover:border-primary/40">
+          <div className="flex items-center justify-between">
+            <p className="font-body text-xs font-medium text-muted-foreground">Resumes on File</p>
+            <FileSearch className="h-4 w-4 text-blue-500" />
+          </div>
+          <div className="mt-3 flex items-baseline gap-1.5">
+            <span className="font-metric text-3xl font-bold tracking-tight text-foreground tabular-nums sm:text-4xl">
               {resumes.length}
             </span>
-            <span className="font-body text-xs text-muted-foreground">versions</span>
+            <span className="font-body text-xs text-muted-foreground">drafts</span>
           </div>
-          <p className="mt-1 font-body text-[11px] text-muted-foreground">
-            {resumes.length > 0 ? "ATS profile active" : "upload required"}
+          <p className="mt-1.5 font-body text-[11px] text-muted-foreground">
+            {resumes.length > 0 ? "ATS profile scanned" : "Upload resume to scan"}
           </p>
         </div>
       </div>
 
-      {/* Main Two-Column Working Surface */}
+      {/* Main Two-Column Grid */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Left Column (2 spans): Recent Interviews Table & Placement Drives */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Recent Interviews Table */}
-          <div className="rounded-lg border border-border/80 bg-card">
-            <div className="flex items-center justify-between border-b border-border/80 px-5 py-3.5">
+          {/* Recent Practice Sessions Table */}
+          <div className="rounded-3xl border border-border/80 bg-card shadow-soft overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border/80 px-6 py-4">
               <div>
-                <h2 className="font-body text-sm font-semibold text-foreground">
-                  Recent practice sessions
+                <h2 className="font-headline text-sm font-semibold text-foreground">
+                  Recent Practice Sessions
                 </h2>
-                <p className="font-body text-xs text-muted-foreground">
+                <p className="font-body text-[11px] text-muted-foreground">
                   AI-evaluated mock interviews and performance records
                 </p>
               </div>
               <Link
                 href="/app/history"
-                className="inline-flex items-center gap-1 font-body text-xs font-medium text-muted-foreground hover:text-foreground"
+                className="inline-flex items-center gap-1 font-body text-xs font-semibold text-primary hover:underline"
               >
-                <span>View all</span>
-                <ArrowRight className="h-3 w-3" />
+                <span>View all history</span>
+                <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left font-body text-xs">
                 <thead>
-                  <tr className="border-b border-border/60 text-muted-foreground">
-                    <th className="px-5 py-2.5 font-medium">Interview</th>
-                    <th className="px-4 py-2.5 font-medium">Difficulty</th>
-                    <th className="px-4 py-2.5 font-medium">Date</th>
-                    <th className="px-4 py-2.5 text-right font-medium">Score</th>
-                    <th className="px-5 py-2.5 text-right font-medium">Action</th>
+                  <tr className="border-b border-border/60 bg-muted/20 text-muted-foreground">
+                    <th className="px-6 py-3 font-semibold">Interview</th>
+                    <th className="px-4 py-3 font-semibold">Difficulty</th>
+                    <th className="px-4 py-3 font-semibold">Date</th>
+                    <th className="px-4 py-3 text-right font-semibold">Score</th>
+                    <th className="px-6 py-3 text-right font-semibold">Action</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-border/50">
                   {interviews.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="px-5 py-8 text-center text-muted-foreground">
+                      <td colSpan={5} className="px-6 py-10 text-center text-muted-foreground">
                         No practice sessions yet. Start a 10-minute mock interview to receive real evaluation.
                       </td>
                     </tr>
@@ -211,42 +225,44 @@ export default async function StudentDashboard({ profile }: StudentDashboardProp
                       return (
                         <tr
                           key={item.id}
-                          className="border-b border-border/60 transition-colors last:border-0 hover:bg-muted/30"
+                          className="transition-colors hover:bg-muted/40"
                         >
-                          <td className="px-5 py-3">
-                            <p className="font-medium text-foreground capitalize">
+                          <td className="px-6 py-3.5">
+                            <p className="font-semibold text-foreground capitalize">
                               {item.target_role || `${item.interview_type} mock`}
                             </p>
                             <p className="text-[11px] text-muted-foreground capitalize">
                               {item.interview_type} track
                             </p>
                           </td>
-                          <td className="px-4 py-3 capitalize text-muted-foreground">
+                          <td className="px-4 py-3.5 capitalize text-muted-foreground">
                             {item.difficulty}
                           </td>
-                          <td className="px-4 py-3 text-muted-foreground">
+                          <td className="px-4 py-3.5 text-muted-foreground">
                             {new Date(item.created_at).toLocaleDateString("en-IN", {
                               month: "short",
                               day: "numeric",
                             })}
                           </td>
-                          <td className="px-4 py-3 text-right font-metric font-medium text-foreground tabular-nums">
-                            {score !== undefined ? `${score} / 100` : "—"}
+                          <td className="px-4 py-3.5 text-right font-metric font-semibold text-foreground tabular-nums">
+                            {score !== undefined ? `${Math.round(score)} / 100` : "—"}
                           </td>
-                          <td className="px-5 py-3 text-right">
+                          <td className="px-6 py-3.5 text-right">
                             {item.status === "completed" ? (
                               <Link
                                 href={`/app/interview/${item.id}/report`}
-                                className="font-medium text-foreground underline-offset-4 hover:underline"
+                                className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
                               >
-                                Report →
+                                <span>Report</span>
+                                <ArrowRight className="h-3 w-3" />
                               </Link>
                             ) : item.status === "in_progress" ? (
                               <Link
                                 href={`/app/interview/${item.id}`}
-                                className="font-medium text-foreground underline-offset-4 hover:underline"
+                                className="inline-flex items-center gap-1 font-semibold text-amber-500 hover:underline"
                               >
-                                Resume →
+                                <span>Resume</span>
+                                <ArrowRight className="h-3 w-3" />
                               </Link>
                             ) : (
                               <StatusBadge status={item.status} />
@@ -261,63 +277,70 @@ export default async function StudentDashboard({ profile }: StudentDashboardProp
             </div>
           </div>
 
-          {/* Placement Drives Pipeline Briefing */}
-          <div className="flex items-center justify-between rounded-lg border border-border/80 bg-card p-5">
-            <div>
-              <h2 className="font-body text-sm font-semibold text-foreground">
-                Campus placement drives
-              </h2>
-              <p className="mt-0.5 font-body text-xs text-muted-foreground">
-                Verify cutoff criteria, eligibility, and take company-specific assessments.
-              </p>
+          {/* Placement Drives Briefing Card */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between rounded-3xl border border-border/80 bg-card p-6 shadow-soft gap-4">
+            <div className="flex items-start gap-3.5">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary shrink-0">
+                <Layers className="h-5 w-5" />
+              </div>
+              <div>
+                <h2 className="font-headline text-sm font-semibold text-foreground">
+                  Campus Placement Drives
+                </h2>
+                <p className="mt-0.5 font-body text-xs text-muted-foreground">
+                  Verify cutoff criteria, eligibility, and take company-specific assessments.
+                </p>
+              </div>
             </div>
             <Link
               href="/app/drives"
-              className="inline-flex h-8 items-center gap-1.5 rounded border border-border/80 bg-background px-3 font-body text-xs font-medium text-foreground transition-colors hover:bg-muted"
+              className="inline-flex h-9 items-center justify-center gap-1.5 rounded-2xl border border-input bg-background px-4 font-body text-xs font-semibold text-foreground shadow-xs transition hover:bg-muted shrink-0"
             >
-              <span>Explore drives</span>
-              <ArrowRight className="h-3 w-3" />
+              <span>Explore Drives</span>
+              <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         </div>
 
-        {/* Right Column (1 span): Diagnostic Weak Skills & Prep Utilities */}
+        {/* Right Column: Diagnostic Weak Skills & Prep Utilities */}
         <div className="space-y-6">
-          {/* Weak Skills Diagnosis */}
-          <div className="rounded-lg border border-border/80 bg-card">
-            <div className="flex items-center justify-between border-b border-border/80 px-4 py-3.5">
+          {/* Diagnostic Weak Skills */}
+          <div className="rounded-3xl border border-border/80 bg-card shadow-soft overflow-hidden">
+            <div className="flex items-center justify-between border-b border-border/80 px-5 py-4">
               <div>
-                <h2 className="font-body text-sm font-semibold text-foreground">
-                  Diagnostic weak skills
+                <h2 className="font-headline text-sm font-semibold text-foreground">
+                  Diagnostic Focus Areas
                 </h2>
                 <p className="font-body text-[11px] text-muted-foreground">
                   Flagged during AI speech evaluation
                 </p>
               </div>
               {weakAreas.length > 0 && (
-                <span className="rounded bg-rose-50 px-2 py-0.5 font-body text-[10px] font-medium text-rose-800 border border-rose-200/60 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/40">
+                <span className="rounded-full bg-rose-500/10 px-2.5 py-0.5 font-mono text-[10px] font-semibold text-rose-500 border border-rose-500/20">
                   {weakAreas.length} active
                 </span>
               )}
             </div>
 
-            <div className="divide-y divide-border/60">
+            <div className="divide-y divide-border/50">
               {weakAreas.length === 0 ? (
-                <p className="p-4 text-center font-body text-xs text-muted-foreground">
-                  No weak skills flagged. Complete mock interviews to generate diagnostic feedback.
-                </p>
+                <div className="p-6 text-center">
+                  <p className="font-body text-xs text-muted-foreground">
+                    No weak skills flagged. Complete mock interviews to generate diagnostic feedback.
+                  </p>
+                </div>
               ) : (
                 weakAreas.map((item) => (
-                  <div key={item.id} className="p-3.5 space-y-1">
+                  <div key={item.id} className="p-4 space-y-1.5 transition hover:bg-muted/30">
                     <div className="flex items-center justify-between">
-                      <span className="font-body text-xs font-medium text-foreground">
+                      <span className="font-body text-xs font-semibold text-foreground">
                         {item.skill}
                       </span>
                       <span
-                        className={`rounded px-1.5 py-0.2 text-[10px] font-medium uppercase border ${
+                        className={`rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                           item.severity === "high"
-                            ? "bg-rose-50 text-rose-800 border-rose-200/60 dark:bg-rose-950/40 dark:text-rose-300"
-                            : "bg-amber-50 text-amber-800 border-amber-200/60 dark:bg-amber-950/40 dark:text-amber-300"
+                            ? "bg-rose-500/15 text-rose-500"
+                            : "bg-amber-500/15 text-amber-500"
                         }`}
                       >
                         {item.severity}
@@ -329,8 +352,8 @@ export default async function StudentDashboard({ profile }: StudentDashboardProp
                       </p>
                     )}
                     <Link
-                      href={`/app/chat?q=How can I improve my skills in ${encodeURIComponent(item.skill)} for placement interviews?`}
-                      className="inline-flex items-center gap-1 font-body text-[11px] font-medium text-muted-foreground hover:text-foreground pt-0.5"
+                      href={`/app/chat`}
+                      className="inline-flex items-center gap-1 font-body text-[11px] font-medium text-primary hover:underline pt-0.5"
                     >
                       <span>Ask AI practice plan</span>
                       <ArrowUpRight className="h-3 w-3" />
@@ -341,32 +364,41 @@ export default async function StudentDashboard({ profile }: StudentDashboardProp
             </div>
           </div>
 
-          {/* Career & Placement Tools */}
-          <div className="rounded-lg border border-border/80 bg-card p-4 space-y-3">
-            <h2 className="font-body text-xs font-medium text-muted-foreground">
-              Placement preparation tools
+          {/* Quick Placement Prep Shortcuts */}
+          <div className="rounded-3xl border border-border/80 bg-card p-5 shadow-soft space-y-3">
+            <h2 className="font-headline text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Placement Utilities
             </h2>
-            <div className="divide-y divide-border/60 font-body text-xs">
+            <div className="space-y-1.5 font-body text-xs">
               <Link
                 href="/app/resume/scanner"
-                className="flex items-center justify-between py-2 font-medium text-foreground transition-colors hover:text-foreground/80"
+                className="flex items-center justify-between rounded-xl p-2.5 font-medium text-foreground transition hover:bg-muted/60"
               >
-                <span>ATS Resume Scanner</span>
+                <div className="flex items-center gap-2.5">
+                  <FileSearch className="h-4 w-4 text-primary" />
+                  <span>ATS Resume Scanner</span>
+                </div>
                 <span className="text-[11px] text-muted-foreground">Scan PDF →</span>
               </Link>
               <Link
                 href="/app/resume/builder"
-                className="flex items-center justify-between py-2 font-medium text-foreground transition-colors hover:text-foreground/80"
+                className="flex items-center justify-between rounded-xl p-2.5 font-medium text-foreground transition hover:bg-muted/60"
               >
-                <span>Resume Builder</span>
+                <div className="flex items-center gap-2.5">
+                  <FileSearch className="h-4 w-4 text-emerald-500" />
+                  <span>Resume Builder</span>
+                </div>
                 <span className="text-[11px] text-muted-foreground">Edit draft →</span>
               </Link>
               <Link
                 href="/app/chat"
-                className="flex items-center justify-between py-2 font-medium text-foreground transition-colors hover:text-foreground/80"
+                className="flex items-center justify-between rounded-xl p-2.5 font-medium text-foreground transition hover:bg-muted/60"
               >
-                <span>Placement Prep Assistant</span>
-                <span className="text-[11px] text-muted-foreground">Ask Q&A →</span>
+                <div className="flex items-center gap-2.5">
+                  <Sparkles className="h-4 w-4 text-amber-500" />
+                  <span>Prep Assistant Q&amp;A</span>
+                </div>
+                <span className="text-[11px] text-muted-foreground">Ask AI →</span>
               </Link>
             </div>
           </div>

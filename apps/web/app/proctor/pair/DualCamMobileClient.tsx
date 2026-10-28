@@ -9,7 +9,16 @@ export function DualCamMobileClient() {
   const token = searchParams.get("token") || "DEMO1234";
 
   const videoRef = useRef<HTMLVideoElement>(null);
+  const streamInstanceRef = useRef<MediaStream | null>(null);
   const [streamActive, setStreamActive] = useState(false);
+
+  const handleVideoRef = (node: HTMLVideoElement | null) => {
+    (videoRef as React.MutableRefObject<HTMLVideoElement | null>).current = node;
+    if (node && streamInstanceRef.current) {
+      node.srcObject = streamInstanceRef.current;
+      void node.play().catch(() => {});
+    }
+  };
   const [permissionError, setPermissionError] = useState<string | null>(null);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [heartbeatCount, setHeartbeatCount] = useState<number>(0);
@@ -30,6 +39,7 @@ export function DualCamMobileClient() {
         });
 
         mediaStream = stream;
+        streamInstanceRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -113,7 +123,7 @@ export function DualCamMobileClient() {
         ) : (
           <div className="relative w-full max-w-sm aspect-[3/4] overflow-hidden rounded-xl border border-slate-800 bg-black shadow-2xl">
             <video
-              ref={videoRef}
+              ref={handleVideoRef}
               autoPlay
               playsInline
               muted

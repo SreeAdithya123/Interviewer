@@ -145,6 +145,18 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const preFlightCompletedRef = useRef(false);
 
+  // Extended silence timer and pause buffer for natural candidate pauses
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [isSilencePaused, setIsSilencePaused] = useState(false);
+
+  const clearSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    setIsSilencePaused(false);
+  }, []);
+
   const playAcknowledgementClip = useCallback(() => {
     if (ACKNOWLEDGEMENT_CLIPS.length === 0) return;
     let index = Math.floor(Math.random() * ACKNOWLEDGEMENT_CLIPS.length);
@@ -163,13 +175,14 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
   const interviewId = interview.id;
 
   const cleanupMediaResources = useCallback(() => {
+    clearSilenceTimer();
     vadRef.current?.destroy();
     vadRef.current = null;
     streamRef.current?.getTracks().forEach((track) => track.stop());
     streamRef.current = null;
     mediaRecorderRef.current = null;
     setVadStatus("off");
-  }, []);
+  }, [clearSilenceTimer]);
 
   const finishNow = useCallback(
     async (overrideDurationSeconds?: number) => {
@@ -363,13 +376,14 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
 
   const stopRecording = useCallback(
     (discard: boolean) => {
+      clearSilenceTimer();
       discardStopRef.current = discard;
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state !== "inactive") {
         recorder.stop();
       }
     },
-    [],
+    [clearSilenceTimer],
   );
 
   const startRecording = useCallback(async () => {
@@ -430,8 +444,25 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
           stream,
           baseAssetPath: `https://cdn.jsdelivr.net/npm/@ricky0123/vad-web@${VAD_VERSION}/dist/`,
           onnxWASMBasePath: `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`,
+          positiveSpeechThreshold: 0.6,
+          negativeSpeechThreshold: 0.35,
+          redemptionFrames: 25,
+          onSpeechStart: () => {
+            // User resumed speaking: immediately clear silence countdown
+            clearSilenceTimer();
+          },
           onSpeechEnd: () => {
-            stopRecording(false);
+            // Allow candidate generous time (3.5s) to pause, think, or continue
+            clearSilenceTimer();
+            setIsSilencePaused(true);
+            silenceTimerRef.current = setTimeout(() => {
+              const elapsed = (Date.now() - answerStartRef.current) / 1000;
+              if (elapsed >= 3) {
+                stopRecording(false);
+              } else {
+                setIsSilencePaused(false);
+              }
+            }, 3500);
           },
         });
         vadRef.current = vad;
@@ -683,8 +714,18 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
                   </div>
 
                   {phase === "recording" && vadStatus === "active" && (
-                    <p className="mt-3 font-body text-xs text-muted-foreground">
-                      Speaking detected · Auto-stop on silence is on.
+                    <p className="mt-3 font-body text-xs text-muted-foreground flex items-center gap-1.5">
+                      {isSilencePaused ? (
+                        <>
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />
+                          <span className="text-amber-500 font-medium">Pause detected — take your time or tap Done answering.</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                          <span>Speaking detected · Allows natural pauses before proceeding.</span>
+                        </>
+                      )}
                     </p>
                   )}
                 </div>
@@ -817,7 +858,9 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
                       </button>
                       {vadStatus === "active" && (
                         <span className="font-body text-xs text-muted-foreground">
-                          Auto-stop on silence is on — or tap Done.
+                          {isSilencePaused
+                            ? "Pause detected — take your time or tap Done."
+                            : "Allows natural pauses — or tap Done."}
                         </span>
                       )}
                       {vadStatus === "loading" && (

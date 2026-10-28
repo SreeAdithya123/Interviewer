@@ -90,6 +90,22 @@ export function FaceProctor({
     };
   }, [enabled]);
 
+  // Video element binder ensuring stream attaches as soon as <video> mounts
+  const handleVideoRef = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    if (node && streamRef.current) {
+      node.srcObject = streamRef.current;
+      void node.play().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    if (videoRef.current && streamRef.current && hasPermission) {
+      videoRef.current.srcObject = streamRef.current;
+      void videoRef.current.play().catch(() => {});
+    }
+  }, [hasPermission]);
+
   // Periodic frame analyzer (lightweight luminance and spatial bounding)
   const analyzeFrame = useCallback(() => {
     const video = videoRef.current;
@@ -267,7 +283,7 @@ export function FaceProctor({
       {/* Video Element */}
       {hasPermission ? (
         <video
-          ref={videoRef}
+          ref={handleVideoRef}
           muted
           playsInline
           autoPlay

@@ -72,6 +72,25 @@ export function PreFlightCheckModal({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
 
+  // Robust video element binder: attaches stream immediately when element mounts
+  const handleVideoRef = useCallback(
+    (node: HTMLVideoElement | null) => {
+      videoPreviewRef.current = node;
+      if (node && activeStream) {
+        node.srcObject = activeStream;
+        void node.play().catch(() => {});
+      }
+    },
+    [activeStream]
+  );
+
+  useEffect(() => {
+    if (videoPreviewRef.current && activeStream && status.camera.status === "passed") {
+      videoPreviewRef.current.srcObject = activeStream;
+      void videoPreviewRef.current.play().catch(() => {});
+    }
+  }, [activeStream, status.camera.status]);
+
   const [enrollCountdown, setEnrollCountdown] = useState<number | null>(null);
   const [isSavingSnapshot, setIsSavingSnapshot] = useState(false);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
@@ -685,7 +704,7 @@ export function PreFlightCheckModal({
               <div className="space-y-1">
                 <div className="relative aspect-[4/3] w-full overflow-hidden rounded-lg border border-border/80 bg-black flex items-center justify-center shadow-inner">
                   <video
-                    ref={videoPreviewRef}
+                    ref={handleVideoRef}
                     autoPlay
                     playsInline
                     muted
