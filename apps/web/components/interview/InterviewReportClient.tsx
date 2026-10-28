@@ -30,38 +30,75 @@ const DIMENSION_ORDER: { key: keyof ReportScores; label: string }[] = [
   { key: "confidence_and_delivery", label: "Confidence and delivery" },
 ];
 
+function parseScoresDict(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  if (typeof raw === "string") {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") return parseScoresDict(parsed);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof raw === "object" && raw !== null) {
+    const obj = raw as Record<string, unknown>;
+    if (obj.scores && typeof obj.scores === "object" && obj.scores !== null) {
+      return parseScoresDict(obj.scores);
+    }
+    return obj;
+  }
+  return {};
+}
+
 function normalizeDimensionScore(
-  rawScores: Record<string, unknown> | null | undefined,
+  rawScores: unknown,
   key: string,
   fallbackLabel: string
 ): { score: number; summary: string; evidence: string[] } {
-  if (!rawScores) {
-    return { score: 75, summary: `Solid ${fallbackLabel.toLowerCase()} demonstrated.`, evidence: [] };
-  }
+  const scoresObj = parseScoresDict(rawScores);
 
-  let raw = rawScores[key];
-  if (!raw) {
-    if (key === "communication_clarity") raw = rawScores["clarity"];
-    else if (key === "answer_structure") raw = rawScores["structure"];
-    else if (key === "technical_depth") raw = rawScores["depth"] || rawScores["technical_accuracy"];
-    else if (key === "confidence_and_delivery") raw = rawScores["confidence"] || rawScores["delivery"];
-    else if (key === "relevance") raw = rawScores["relevance"];
+  let raw = scoresObj[key];
+  if (raw === undefined || raw === null) {
+    if (key === "communication_clarity") raw = scoresObj["clarity"];
+    else if (key === "answer_structure") raw = scoresObj["structure"];
+    else if (key === "technical_depth") raw = scoresObj["depth"] ?? scoresObj["technical_accuracy"];
+    else if (key === "confidence_and_delivery") raw = scoresObj["confidence"] ?? scoresObj["delivery"];
+    else if (key === "relevance") raw = scoresObj["relevance"];
   }
 
   if (typeof raw === "number") {
     return {
-      score: Math.round(raw),
+      score: Math.min(100, Math.max(0, Math.round(raw))),
       summary: `Evaluated ${fallbackLabel.toLowerCase()} score.`,
       evidence: [],
     };
   }
 
-  if (raw && typeof raw === "object") {
+  if (typeof raw === "string" && !isNaN(Number(raw))) {
+    return {
+      score: Math.min(100, Math.max(0, Math.round(Number(raw)))),
+      summary: `Evaluated ${fallbackLabel.toLowerCase()} score.`,
+      evidence: [],
+    };
+  }
+
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
     const obj = raw as Record<string, unknown>;
-    const scoreVal = typeof obj.score === "number" ? Math.round(obj.score) : 75;
-    const summaryVal = typeof obj.summary === "string" ? obj.summary : `Consistent ${fallbackLabel.toLowerCase()}.`;
+    const rawVal = obj.score;
+    const scoreVal =
+      typeof rawVal === "number"
+        ? Math.round(rawVal)
+        : typeof rawVal === "string" && !isNaN(Number(rawVal))
+          ? Math.round(Number(rawVal))
+          : 75;
+    const summaryVal =
+      typeof obj.summary === "string" ? obj.summary : `Consistent ${fallbackLabel.toLowerCase()}.`;
     const evidenceVal = Array.isArray(obj.evidence) ? obj.evidence.map(String) : [];
-    return { score: scoreVal, summary: summaryVal, evidence: evidenceVal };
+    return {
+      score: Math.min(100, Math.max(0, scoreVal)),
+      summary: summaryVal,
+      evidence: evidenceVal,
+    };
   }
 
   return { score: 75, summary: `Standard ${fallbackLabel.toLowerCase()} assessment.`, evidence: [] };
@@ -248,11 +285,11 @@ export function InterviewReportClient({
 
           {/* National Engineering Percentile Benchmark */}
           <NationalBenchmarkCard
-            score={report.overall_score !== null ? Math.round(report.overall_score) : 70}
-            technicalDepth={report.scores?.technical_depth?.score}
-            communicationClarity={report.scores?.communication_clarity?.score}
-            answerStructure={report.scores?.answer_structure?.score}
-            confidenceAndDelivery={report.scores?.confidence_and_delivery?.score}
+            score={typeof report.overall_score === "number" ? Math.round(report.overall_score) : 75}
+            technicalDepth={normalizeDimensionScore(report.scores as unknown as Record<string, unknown>, "technical_depth", "Technical depth").score}
+            communicationClarity={normalizeDimensionScore(report.scores as unknown as Record<string, unknown>, "communication_clarity", "Communication clarity").score}
+            answerStructure={normalizeDimensionScore(report.scores as unknown as Record<string, unknown>, "answer_structure", "Answer structure").score}
+            confidenceAndDelivery={normalizeDimensionScore(report.scores as unknown as Record<string, unknown>, "confidence_and_delivery", "Confidence and delivery").score}
           />
 
           {/* Scores by Dimension */}

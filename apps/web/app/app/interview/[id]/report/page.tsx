@@ -53,8 +53,15 @@ export default async function InterviewReportPage({ params }: InterviewReportPag
     .eq("interview_id", id)
     .maybeSingle();
 
-  // If report doesn't exist yet, or is pending/failed, automatically evaluate and finalize it now
-  if (!report || report.status !== "completed") {
+  // If report doesn't exist yet, or is pending/failed, or has missing/empty scores, automatically evaluate and finalize it now
+  const hasValidScores =
+    report &&
+    report.status === "completed" &&
+    report.scores &&
+    typeof report.scores === "object" &&
+    Object.keys(report.scores).length > 0;
+
+  if (!report || report.status !== "completed" || !hasValidScores) {
     try {
       const generated = await ensureInterviewReport(id);
       if (generated) {
