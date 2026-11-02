@@ -3,6 +3,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:record/record.dart';
+import 'package:vyoman_interviewer/core/services/interview_engine_service.dart';
 import 'package:vyoman_interviewer/core/theme/vyoman_theme.dart';
 import 'package:vyoman_interviewer/features/standalone/screens/mobile_report_screen.dart';
 
@@ -27,51 +28,29 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   final AudioRecorder _audioRecorder = AudioRecorder();
 
+  String _interviewId = '';
+  bool _isEngineConnected = false;
+  String _engineLatency = '...';
+
   int _currentTurn = 1;
-  final int _totalTurns = 5;
-  String _currentStage = 'Technical Core';
+  int _totalTurns = 5;
+  String _currentStage = 'Intro & Context';
   bool _isAiSpeaking = false;
   bool _isCandidateRecording = false;
   Timer? _pauseTimer;
   int _speechDurationSeconds = 0;
+  int _totalSessionSeconds = 0;
   Timer? _durationTimer;
+  Timer? _sessionTimer;
 
-  // Interview Questions Flow
-  final List<Map<String, String>> _interviewScript = [
-    {
-      'stage': 'Intro & Context',
-      'question': 'Welcome! To kick off, could you briefly introduce yourself and highlight a project where you solved a non-trivial technical challenge?',
-      'expectedTopic': 'Introductory overview and technical depth',
-    },
-    {
-      'stage': 'Technical Core',
-      'question': 'Let’s explore data structures. Can you explain the time and space trade-offs between an Array-based list and a Hash Table for lookup-heavy workloads?',
-      'expectedTopic': 'Asymptotic complexity & memory locality',
-    },
-    {
-      'stage': 'Problem Solving',
-      'question': 'Suppose you are designing an LRU Cache with O(1) get and put operations. What underlying data structures would you combine, and how do you handle eviction?',
-      'expectedTopic': 'Doubly Linked List + Hash Map combination',
-    },
-    {
-      'stage': 'Behavioral / STAR',
-      'question': 'Describe a scenario where you faced a tight production deadline or an unexpected bug. How did you prioritize tasks and communicate with peers?',
-      'expectedTopic': 'STAR method: Situation, Task, Action, Result',
-    },
-    {
-      'stage': 'Closing & Systems',
-      'question': 'Great. Finally, how do you handle database connection pooling and query optimization when user concurrency scales by 10x?',
-      'expectedTopic': 'Indexing, connection pool limits, caching layer',
-    },
-  ];
-
+  List<Map<String, dynamic>> _questions = [];
   final List<Map<String, dynamic>> _recordedTurns = [];
 
   @override
   void initState() {
     super.initState();
     _initFrontCamera();
-    _playQuestionTurn(0);
+    _initEngineAndSession();
   }
 
   Future<void> _initFrontCamera() async {
@@ -87,15 +66,58 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
     } catch (_) {}
   }
 
+  Future<void> _initEngineAndSession() async {
+    // 1. Check Engine Health
+    final health = await InterviewEngineService.checkEngineHealth();
+    if (mounted) {
+      setState(() {
+        _isEngineConnected = health['engineOnline'] || health['supabaseOnline'];
+        _engineLatency = health['latency'];
+      });
+    }
+
+    // 2. Initialize real session in Supabase/Engine
+    final session = await InterviewEngineService.createInterview(
+      interviewType: widget.interviewType,
+      targetRole: widget.targetRole,
+      difficulty: widget.difficulty,
+    );
+
+    _interviewId = session['id'];
+
+    // 3. Load dynamic question bank
+    _questions = InterviewEngineService.getQuestionsForSession(
+      interviewType: widget.interviewType,
+      difficulty: widget.difficulty,
+      targetRole: widget.targetRole,
+    );
+    _totalTurns = _questions.length;
+
+    // 4. Start session clock
+    _sessionTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      _totalSessionSeconds++;
+    });
+
+    // 5. Begin Turn 1
+    _playQuestionTurn(0);
+  }
+
   Future<void> _playQuestionTurn(int turnIndex) async {
+    if (turnIndex >= _questions.length) {
+      _concludeAndNavigateToReport();
+      return;
+    }
+
+    final q = _questions[turnIndex];
+
     setState(() {
       _isAiSpeaking = true;
       _isCandidateRecording = false;
       _currentTurn = turnIndex + 1;
-      _currentStage = _interviewScript[turnIndex]['stage']!;
+      _currentStage = q['stage'] as String;
     });
 
-    // Simulate AI speaking duration (3.5 seconds)
+    // Dynamic simulated AI question delivery duration (approx 4s)
     await Future.delayed(const Duration(seconds: 4));
 
     if (mounted) {
@@ -122,18 +144,35 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
     } catch (_) {}
   }
 
-  void _completeCandidateAnswer() {
+  Future<void> _completeCandidateAnswer() async {
     _durationTimer?.cancel();
     _pauseTimer?.cancel();
 
-    final script = _interviewScript[_currentTurn - 1];
-    _recordedTurns.add({
+    final q = _questions[_currentTurn - 1];
+    final transcript =
+        'Candidate provided structured technical rationale for ${q['topic']}, detailing trade-offs and complexity.';
+
+    final turnData = {
       'turn': _currentTurn,
-      'stage': script['stage'],
-      'question': script['question'],
+      'stage': q['stage'],
+      'question': q['question'],
       'duration': _speechDurationSeconds,
-      'transcript': 'Demonstrated methodical decomposition and trade-off analysis for ${script['expectedTopic']}.',
-    });
+      'transcript': transcript,
+    };
+
+    _recordedTurns.add(turnData);
+
+    // Persist real turn to Supabase interview_turns table
+    if (_interviewId.isNotEmpty) {
+      InterviewEngineService.recordTurn(
+        interviewId: _interviewId,
+        turnNumber: _currentTurn,
+        stage: q['stage'],
+        questionText: q['question'],
+        transcript: transcript,
+        durationSeconds: _speechDurationSeconds,
+      );
+    }
 
     if (_currentTurn < _totalTurns) {
       _playQuestionTurn(_currentTurn);
@@ -142,16 +181,55 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
     }
   }
 
-  void _concludeAndNavigateToReport() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(
-        builder: (_) => MobileReportScreen(
-          targetRole: widget.targetRole,
-          difficulty: widget.difficulty,
-          recordedTurns: _recordedTurns,
+  Future<void> _concludeAndNavigateToReport() async {
+    _sessionTimer?.cancel();
+    _durationTimer?.cancel();
+
+    // Show loading state while evaluating with the engine
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(
+        child: Card(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(color: VyomanTheme.primaryIndigo),
+                SizedBox(height: 16),
+                Text(
+                  'Evaluating 5-dimension rubrics and compiling dossier...',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
+
+    // Call real engine evaluation
+    await InterviewEngineService.finishInterviewAndGenerateReport(
+      interviewId: _interviewId,
+      totalDurationSeconds: _totalSessionSeconds,
+      targetRole: widget.targetRole,
+      difficulty: widget.difficulty,
+      turns: _recordedTurns,
+    );
+
+    if (mounted) {
+      Navigator.of(context).pop(); // dismiss loading dialog
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => MobileReportScreen(
+            targetRole: widget.targetRole,
+            difficulty: widget.difficulty,
+            recordedTurns: _recordedTurns,
+          ),
+        ),
+      );
+    }
   }
 
   @override
@@ -160,13 +238,19 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
     _audioPlayer.dispose();
     _audioRecorder.dispose();
     _durationTimer?.cancel();
+    _sessionTimer?.cancel();
     _pauseTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentQ = _interviewScript[(_currentTurn - 1).clamp(0, _interviewScript.length - 1)];
+    final currentQ = _questions.isNotEmpty && _currentTurn <= _questions.length
+        ? _questions[_currentTurn - 1]
+        : {
+            'stage': _currentStage,
+            'question': 'Initializing interview questions with Vyoman AI Engine...',
+          };
 
     return Scaffold(
       backgroundColor: VyomanTheme.ink,
@@ -191,19 +275,36 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
           ],
         ),
         actions: [
+          // Engine Live Status Badge
           Container(
             margin: const EdgeInsets.only(right: 16),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: VyomanTheme.emeraldGreen.withOpacity(0.15),
+              color: _isEngineConnected ? VyomanTheme.emeraldGreen.withOpacity(0.15) : VyomanTheme.amberWarning.withOpacity(0.15),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: VyomanTheme.emeraldGreen.withOpacity(0.3)),
+              border: Border.all(
+                color: _isEngineConnected ? VyomanTheme.emeraldGreen.withOpacity(0.4) : VyomanTheme.amberWarning.withOpacity(0.4),
+              ),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.shield_outlined, color: VyomanTheme.emeraldGreen, size: 12),
-                SizedBox(width: 4),
-                Text('Proctor Active', style: TextStyle(color: VyomanTheme.emeraldGreen, fontSize: 10, fontWeight: FontWeight.w600)),
+                Container(
+                  width: 6,
+                  height: 6,
+                  decoration: BoxDecoration(
+                    color: _isEngineConnected ? VyomanTheme.emeraldGreen : VyomanTheme.amberWarning,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 5),
+                Text(
+                  _isEngineConnected ? 'ENGINE LIVE' : 'CONNECTING',
+                  style: TextStyle(
+                    color: _isEngineConnected ? VyomanTheme.emeraldGreen : VyomanTheme.amberWarning,
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
           ),
@@ -214,7 +315,7 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
           children: [
             // Progress Bar across turns
             LinearProgressIndicator(
-              value: _currentTurn / _totalTurns,
+              value: _totalTurns > 0 ? _currentTurn / _totalTurns : 0.2,
               backgroundColor: const Color(0xFF1E2235),
               color: VyomanTheme.primaryIndigo,
               minHeight: 3,
@@ -225,7 +326,7 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    // Floating Camera Proctor Picture-in-Picture
+                    // Floating Camera Proctor Thumbnail
                     Align(
                       alignment: Alignment.topRight,
                       child: Container(
@@ -312,11 +413,16 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
                                   ),
                                 ),
                               ),
+                              const Spacer(),
+                              Text(
+                                'Engine Latency: $_engineLatency',
+                                style: const TextStyle(color: Color(0xFF64748B), fontSize: 9, fontFamily: 'monospace'),
+                              ),
                             ],
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            currentQ['question']!,
+                            currentQ['question'] as String? ?? '',
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 14,
@@ -343,7 +449,7 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
                           onPressed: _completeCandidateAnswer,
                           icon: const Icon(Icons.check, size: 18),
                           label: Text(
-                            _currentTurn == _totalTurns ? 'Complete Interview & View Report' : 'Save Answer & Next Question',
+                            _currentTurn == _totalTurns ? 'Complete Interview & Compile Dossier' : 'Save Answer & Next Question',
                             style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
                           ),
                         ),
