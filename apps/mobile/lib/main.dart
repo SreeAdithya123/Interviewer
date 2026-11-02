@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vyoman_interviewer/core/config/supabase_config.dart';
 import 'package:vyoman_interviewer/core/theme/vyoman_theme.dart';
-import 'package:vyoman_interviewer/features/home/screens/home_mode_screen.dart';
+import 'package:vyoman_interviewer/features/shell/screens/app_shell_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,7 +31,7 @@ class VyomanApp extends StatelessWidget {
       theme: VyomanTheme.lightTheme,
       darkTheme: VyomanTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: const HomeModeScreen(),
+      home: const AppShellScreen(),
     );
   }
 }

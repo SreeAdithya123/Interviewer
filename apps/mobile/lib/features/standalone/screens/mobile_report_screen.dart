@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vyoman_interviewer/core/theme/vyoman_theme.dart';
+import 'package:vyoman_interviewer/features/standalone/services/pdf_report_generator.dart';
 
 class MobileReportScreen extends StatelessWidget {
   final String targetRole;
@@ -25,6 +26,20 @@ class MobileReportScreen extends StatelessWidget {
         title: const Text('Executive Evaluation Dossier'),
         elevation: 0,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.picture_as_pdf_outlined),
+            tooltip: 'Export PDF Dossier',
+            onPressed: () {
+              PdfReportGenerator.generateAndPrintDossier(
+                targetRole: targetRole,
+                difficulty: difficulty,
+                overallScore: overallScore,
+                nationalPercentile: nationalPercentile,
+                proctorScore: proctorScore,
+                turns: recordedTurns,
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.share_outlined),
             onPressed: () {
