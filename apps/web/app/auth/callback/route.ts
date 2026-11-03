@@ -69,7 +69,13 @@ export async function GET(request: Request) {
       if (!fallback.error && fallback.data?.user) {
         user = fallback.data.user;
       } else {
-        authError = error;
+        // Fallback: try 'recovery' type if password reset
+        const recoveryFallback = await supabase.auth.verifyOtp({ token_hash, type: "recovery" });
+        if (!recoveryFallback.error && recoveryFallback.data?.user) {
+          user = recoveryFallback.data.user;
+        } else {
+          authError = error;
+        }
       }
     } else {
       user = data.user;
@@ -104,9 +110,11 @@ export async function GET(request: Request) {
   const destination =
     next && next.startsWith("/") && !next.startsWith("//")
       ? next
-      : profileNeedsOnboarding(profile)
-        ? "/onboarding"
-        : "/app";
+      : type === "recovery"
+        ? "/reset-password"
+        : profileNeedsOnboarding(profile)
+          ? "/onboarding"
+          : "/app";
 
   const redirectResponse = NextResponse.redirect(`${origin}${destination}`);
 

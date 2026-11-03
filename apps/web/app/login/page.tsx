@@ -51,12 +51,17 @@ export default async function LoginPage({
 
         <EmailOtpForm mode="login" />
 
-        <p className="mt-6 text-center font-body text-sm text-muted-foreground">
-          New here?{" "}
-          <Link href="/signup" className="font-medium text-primary underline">
-            Create an account
+        <div className="mt-6 flex flex-col items-center justify-center gap-2 text-center font-body text-sm text-muted-foreground">
+          <Link href="/forgot-password" className="font-medium text-primary hover:underline">
+            Forgot password?
           </Link>
-        </p>
+          <p>
+            New here?{" "}
+            <Link href="/signup" className="font-medium text-primary underline">
+              Create an account
+            </Link>
+          </p>
+        </div>
       </div>
     </main>
   );

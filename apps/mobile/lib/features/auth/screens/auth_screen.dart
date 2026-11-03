@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vyoman_interviewer/core/theme/vyoman_theme.dart';
+import 'package:vyoman_interviewer/features/auth/screens/reset_password_screen.dart';
 import 'package:vyoman_interviewer/features/shell/screens/app_shell_screen.dart';
 
 class AuthScreen extends StatefulWidget {
@@ -249,6 +250,134 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // Show Forgot Password dialog
+  void _showForgotPasswordDialog() {
+    final resetEmailController = TextEditingController(text: _emailController.text.trim());
+    bool dialogLoading = false;
+    String? dialogError;
+    String? dialogSuccess;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.lock_reset_rounded, color: VyomanTheme.primaryIndigo),
+              SizedBox(width: 8),
+              Text('Forgot Password', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Enter your registered email and we\'ll send you a password reset link.',
+                style: TextStyle(fontSize: 12, color: VyomanTheme.textMuted),
+              ),
+              const SizedBox(height: 14),
+              if (dialogError != null)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: VyomanTheme.roseDanger.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(dialogError!, style: const TextStyle(fontSize: 11, color: VyomanTheme.roseDanger)),
+                ),
+              if (dialogSuccess != null)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  margin: const EdgeInsets.only(bottom: 10),
+                  decoration: BoxDecoration(
+                    color: VyomanTheme.emeraldGreen.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(dialogSuccess!, style: const TextStyle(fontSize: 11, color: VyomanTheme.emeraldGreen, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          Navigator.of(context).push(
+                            MaterialPageRoute(builder: (_) => const ResetPasswordScreen()),
+                          );
+                        },
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                        child: const Text('Open Reset Password Screen →', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+                      ),
+                    ],
+                  ),
+                ),
+              TextField(
+                controller: resetEmailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: InputDecoration(
+                  labelText: 'Email Address',
+                  hintText: 'name@college.edu.in',
+                  prefixIcon: const Icon(Icons.mail_outline, size: 18),
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: VyomanTheme.primaryIndigo,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              onPressed: dialogLoading
+                  ? null
+                  : () async {
+                      final email = resetEmailController.text.trim();
+                      if (email.isEmpty || !email.contains('@')) {
+                        setDialogState(() => dialogError = 'Enter a valid email address.');
+                        return;
+                      }
+                      setDialogState(() {
+                        dialogLoading = true;
+                        dialogError = null;
+                        dialogSuccess = null;
+                      });
+
+                      try {
+                        final supabase = Supabase.instance.client;
+                        await supabase.auth.resetPasswordForEmail(
+                          email,
+                          redirectTo: 'io.supabase.flutter://login-callback',
+                        );
+                        setDialogState(() {
+                          dialogLoading = false;
+                          dialogSuccess = 'Reset link sent! Check your email to set a new password.';
+                        });
+                      } catch (e) {
+                        setDialogState(() {
+                          dialogLoading = false;
+                          dialogError = e.toString().replaceAll('AuthException: ', '');
+                        });
+                      }
+                    },
+              child: dialogLoading
+                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text('Send Reset Link', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // 6. Instant 1-Tap Verified Demo Student Sign-In
@@ -566,9 +695,26 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                         ),
                                       ),
                                       const SizedBox(height: 6),
-                                      const Text(
-                                        'Default password for verified accounts: Vyoman@2026!',
-                                        style: TextStyle(fontSize: 10, color: VyomanTheme.textMuted),
+                                      Row(
+                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          const Text(
+                                            'Default: Vyoman@2026!',
+                                            style: TextStyle(fontSize: 10, color: VyomanTheme.textMuted),
+                                          ),
+                                          TextButton(
+                                            onPressed: _showForgotPasswordDialog,
+                                            style: TextButton.styleFrom(
+                                              padding: EdgeInsets.zero,
+                                              minimumSize: const Size(40, 20),
+                                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                            ),
+                                            child: const Text(
+                                              'Forgot Password?',
+                                              style: TextStyle(fontSize: 11, color: VyomanTheme.primaryIndigo, fontWeight: FontWeight.bold),
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       const SizedBox(height: 12),
                                       SizedBox(

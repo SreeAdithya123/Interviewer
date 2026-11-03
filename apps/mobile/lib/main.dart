@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vyoman_interviewer/core/config/supabase_config.dart';
 import 'package:vyoman_interviewer/core/theme/vyoman_theme.dart';
 import 'package:vyoman_interviewer/features/auth/screens/auth_screen.dart';
+import 'package:vyoman_interviewer/features/auth/screens/reset_password_screen.dart';
 import 'package:vyoman_interviewer/features/shell/screens/app_shell_screen.dart';
 
 void main() async {
@@ -57,6 +58,9 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<AuthState>(
       stream: Supabase.instance.client.auth.onAuthStateChange,
       builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data!.event == AuthChangeEvent.passwordRecovery) {
+          return const ResetPasswordScreen();
+        }
         final session = Supabase.instance.client.auth.currentSession;
         if (session != null) {
           return const AppShellScreen();
