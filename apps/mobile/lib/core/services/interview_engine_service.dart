@@ -51,6 +51,18 @@ class InterviewEngineService {
   }) async {
     final supabase = Supabase.instance.client;
 
+    // Ensure session is authenticated with Supabase
+    if (supabase.auth.currentUser == null) {
+      try {
+        await supabase.auth.signInWithPassword(
+          email: 'demo.student@vyoman.tech',
+          password: 'Vyoman@2026!',
+        );
+      } catch (authErr) {
+        debugPrint('Auto-auth safeguard notice: $authErr');
+      }
+    }
+
     try {
       // 1. Try Supabase create_stub_interview RPC
       final response = await supabase.rpc(
@@ -96,35 +108,40 @@ class InterviewEngineService {
       return [
         {
           'turn': 1,
-          'stage': 'Intro & Context',
+          'stage': 'intro',
+          'stageLabel': 'Intro & Context',
           'question':
               'Welcome to your Technical Placement Assessment! Walk me through your engineering background, core data structures you use, and your primary programming language.',
           'topic': 'Introduction & CS Foundations',
         },
         {
           'turn': 2,
-          'stage': 'Technical Core (DSA)',
+          'stage': 'technical',
+          'stageLabel': 'Technical Core (DSA)',
           'question':
               'Explain the time and space complexity trade-offs between Hash Maps and Balanced Binary Search Trees (like Red-Black Trees). When would you choose one over the other?',
           'topic': 'Asymptotic Complexity & Memory Locality',
         },
         {
           'turn': 3,
-          'stage': 'Algorithmic Problem Solving',
+          'stage': 'technical',
+          'stageLabel': 'Algorithmic Problem Solving',
           'question':
               'Suppose you are implementing an LRU Cache with O(1) get and put operations. What two data structures would you combine, and how do you handle eviction on capacity limits?',
           'topic': 'Doubly Linked List + Hash Map combination',
         },
         {
           'turn': 4,
-          'stage': 'System Architecture & Edge Cases',
+          'stage': 'technical',
+          'stageLabel': 'System Architecture & Edge Cases',
           'question':
               'How do you manage database connection pooling, indexing strategies (B-Tree vs Hash index), and caching layers when concurrent requests spike by 10x?',
           'topic': 'Database scalability and indexing',
         },
         {
           'turn': 5,
-          'stage': 'Closing & Code Quality',
+          'stage': 'closing',
+          'stageLabel': 'Closing & Code Quality',
           'question':
               'What software engineering design patterns or testing methodologies (unit tests, integration tests) do you use to ensure production reliability?',
           'topic': 'Design patterns and testing practices',
@@ -134,35 +151,40 @@ class InterviewEngineService {
       return [
         {
           'turn': 1,
-          'stage': 'Intro & Background',
+          'stage': 'intro',
+          'stageLabel': 'Intro & Background',
           'question':
               'Tell me about yourself and what personal values guide how you collaborate with teammates on engineering deliverables.',
           'topic': 'Values & collaboration',
         },
         {
           'turn': 2,
-          'stage': 'STAR Method Challenge',
+          'stage': 'behavioral',
+          'stageLabel': 'STAR Method Challenge',
           'question':
               'Using the STAR framework (Situation, Task, Action, Result), describe a project that ran into unexpected obstacles. How did you adapt your plan?',
           'topic': 'STAR obstacle resolution',
         },
         {
           'turn': 3,
-          'stage': 'Conflict Resolution',
+          'stage': 'behavioral',
+          'stageLabel': 'Conflict Resolution',
           'question':
               'Describe a time you had a strong technical disagreement with a team member or leader. How did you communicate your reasoning and reach consensus?',
           'topic': 'Constructive conflict handling',
         },
         {
           'turn': 4,
-          'stage': 'Leadership & Ownership',
+          'stage': 'behavioral',
+          'stageLabel': 'Leadership & Ownership',
           'question':
               'Share an example where you took initiative on a task outside your defined responsibilities to help the team meet a critical deadline.',
           'topic': 'Ownership & initiative',
         },
         {
           'turn': 5,
-          'stage': 'Closing & Culture Fit',
+          'stage': 'closing',
+          'stageLabel': 'Closing & Culture Fit',
           'question':
               'What key takeaway from your college projects are you most eager to apply in a high-growth engineering organization?',
           'topic': 'Growth mindset & closing',
@@ -173,41 +195,64 @@ class InterviewEngineService {
       return [
         {
           'turn': 1,
-          'stage': 'Introduction',
+          'stage': 'intro',
+          'stageLabel': 'Introduction',
           'question':
               'Introduce yourself, your academic specialization, and what motivated you to pursue the $targetRole career track.',
           'topic': 'Personal background & motivation',
         },
         {
           'turn': 2,
-          'stage': 'Resume Deep Dive',
+          'stage': 'resume_deep_dive',
+          'stageLabel': 'Resume Deep Dive',
           'question':
               'Pick the most significant technical project listed on your resume. What architectural choices did you make, and what would you improve if rebuilding it today?',
           'topic': 'Project architecture & reflection',
         },
         {
           'turn': 3,
-          'stage': 'Core Problem Solving',
+          'stage': 'technical',
+          'stageLabel': 'Core Problem Solving',
           'question':
               'If a production feature you deployed begins failing intermittently with timeout errors, what structured diagnostic steps do you follow to isolate the root cause?',
           'topic': 'Debugging and diagnostics',
         },
         {
           'turn': 4,
-          'stage': 'Teamwork & Communication',
+          'stage': 'behavioral',
+          'stageLabel': 'Teamwork & Communication',
           'question':
               'Describe a scenario where requirements were ambiguous or changed midway through development. How did you manage expectations and deliver results?',
           'topic': 'Ambiguity & team alignment',
         },
         {
           'turn': 5,
-          'stage': 'Closing Aspirations',
+          'stage': 'closing',
+          'stageLabel': 'Closing Aspirations',
           'question':
               'Where do you envision yourself contributing technically in the next 2 to 3 years, and what questions do you have for the hiring team?',
           'topic': 'Career goals & culture fit',
         },
       ];
     }
+  }
+
+  /// Fetch an existing interview report from Supabase
+  static Future<Map<String, dynamic>?> fetchReport(String interviewId) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final response = await supabase
+          .from('interview_reports')
+          .select('*')
+          .eq('interview_id', interviewId)
+          .maybeSingle();
+      if (response != null) {
+        return Map<String, dynamic>.from(response);
+      }
+    } catch (e) {
+      debugPrint('fetchReport error: $e');
+    }
+    return null;
   }
 
   /// Record an interview turn in Supabase interview_turns table

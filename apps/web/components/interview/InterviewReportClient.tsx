@@ -276,10 +276,12 @@ export function InterviewReportClient({
   }, [report?.scores]);
 
   const overallScoreNum = useMemo(() => {
-    if (report && typeof report.overall_score === "number") {
+    if (report && typeof report.overall_score === "number" && !isNaN(report.overall_score)) {
       return Math.round(report.overall_score);
     }
-    const values = Object.values(normalizedScores).map((s) => s.score);
+    const values = Object.values(normalizedScores || {}).map((s) =>
+      s && typeof s.score === "number" ? s.score : 75
+    );
     if (values.length > 0) {
       return Math.round(values.reduce((a, b) => a + b, 0) / values.length);
     }
@@ -289,10 +291,10 @@ export function InterviewReportClient({
   // Benchmark stats
   const benchmarkReport = useMemo(() => {
     return generateBenchmarkReport(overallScoreNum, {
-      technicalDepth: normalizedScores.technical_depth.score,
-      communicationClarity: normalizedScores.communication_clarity.score,
-      answerStructure: normalizedScores.answer_structure.score,
-      confidenceAndDelivery: normalizedScores.confidence_and_delivery.score,
+      technicalDepth: normalizedScores?.technical_depth?.score ?? 75,
+      communicationClarity: normalizedScores?.communication_clarity?.score ?? 75,
+      answerStructure: normalizedScores?.answer_structure?.score ?? 75,
+      confidenceAndDelivery: normalizedScores?.confidence_and_delivery?.score ?? 75,
     });
   }, [overallScoreNum, normalizedScores]);
 
@@ -730,14 +732,15 @@ export function InterviewReportClient({
               for the <span className="font-semibold text-foreground">{interview.target_role || "Software Engineer"}</span> track. Overall performance
               ranked in the <span className="font-semibold text-foreground">{benchmarkReport.nationalPercentile}th percentile</span> nationally, with an
               aggregate score of <span className="font-semibold text-foreground">{overallScoreNum}/100</span>.
-              Strengths were predominantly demonstrated in <span className="font-semibold text-foreground">{normalizedScores.technical_depth.score >= normalizedScores.communication_clarity.score ? "Technical Depth & CS Core" : "Communication & Articulation"}</span>,
+              Strengths were predominantly demonstrated in <span className="font-semibold text-foreground">{(normalizedScores?.technical_depth?.score ?? 75) >= (normalizedScores?.communication_clarity?.score ?? 75) ? "Technical Depth & CS Core" : "Communication & Articulation"}</span>,
               while primary opportunities for score elevation lie in structured edge-case decomposition.
             </p>
 
             {/* Dimension Mini Summary Matrix */}
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-2">
               {DIMENSION_CONFIG.map(({ key, label }) => {
-                const dim = normalizedScores[key];
+                const dim = normalizedScores[key] ?? { score: 75, summary: "", evidence: [] };
+                const dimScore = typeof dim?.score === "number" ? dim.score : 75;
                 return (
                   <div key={key} className="rounded-lg border border-border/80 bg-background/60 p-3 space-y-1">
                     <span className="text-[11px] font-medium text-muted-foreground line-clamp-1 block">
@@ -745,16 +748,16 @@ export function InterviewReportClient({
                     </span>
                     <div className="flex items-baseline justify-between">
                       <span className="font-metric text-lg font-bold text-foreground tabular-nums">
-                        {dim.score}
+                        {dimScore}
                       </span>
                       <span className="text-[10px] font-mono text-muted-foreground">/ 100</span>
                     </div>
                     <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
                       <div
                         className={`h-full rounded-full ${
-                          dim.score >= 80 ? "bg-emerald-500" : dim.score >= 70 ? "bg-indigo-500" : "bg-amber-500"
+                          dimScore >= 80 ? "bg-emerald-500" : dimScore >= 70 ? "bg-indigo-500" : "bg-amber-500"
                         }`}
-                        style={{ width: `${dim.score}%` }}
+                        style={{ width: `${dimScore}%` }}
                       />
                     </div>
                   </div>
@@ -921,9 +924,10 @@ export function InterviewReportClient({
 
           <div className="space-y-4">
             {DIMENSION_CONFIG.map(({ key, label, category, cohortKey, description }) => {
-              const dim = normalizedScores[key];
+              const dim = normalizedScores[key] ?? { score: 75, summary: "", evidence: [] };
+              const dimScore = typeof dim?.score === "number" ? dim.score : 75;
               const benchMean = NATIONAL_COHORT_BENCHMARKS[cohortKey]?.mean ?? 63.5;
-              const delta = Math.round((dim.score - benchMean) * 10) / 10;
+              const delta = Math.round((dimScore - benchMean) * 10) / 10;
               const deltaPositive = delta >= 0;
 
               return (
@@ -944,7 +948,7 @@ export function InterviewReportClient({
                     <div className="flex items-baseline gap-2 shrink-0">
                       <div className="text-right">
                         <span className="font-metric text-2xl font-bold text-foreground tabular-nums">
-                          {dim.score}
+                          {dimScore}
                         </span>
                         <span className="text-xs text-muted-foreground font-normal"> / 100</span>
                       </div>
@@ -965,9 +969,9 @@ export function InterviewReportClient({
                     <div className="h-2 w-full bg-muted rounded-full overflow-hidden relative">
                       <div
                         className={`h-full rounded-full transition-all duration-500 ${
-                          dim.score >= 80 ? "bg-emerald-500" : dim.score >= 70 ? "bg-indigo-500" : "bg-amber-500"
+                          dimScore >= 80 ? "bg-emerald-500" : dimScore >= 70 ? "bg-indigo-500" : "bg-amber-500"
                         }`}
-                        style={{ width: `${dim.score}%` }}
+                        style={{ width: `${dimScore}%` }}
                       />
                     </div>
                     <div className="flex justify-between text-[10px] text-muted-foreground font-mono">

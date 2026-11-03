@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vyoman_interviewer/core/config/supabase_config.dart';
 import 'package:vyoman_interviewer/core/theme/vyoman_theme.dart';
+import 'package:vyoman_interviewer/features/auth/screens/auth_screen.dart';
 import 'package:vyoman_interviewer/features/shell/screens/app_shell_screen.dart';
 
 void main() async {
@@ -31,7 +32,37 @@ class VyomanApp extends StatelessWidget {
       theme: VyomanTheme.lightTheme,
       darkTheme: VyomanTheme.darkTheme,
       themeMode: ThemeMode.light,
-      home: const AppShellScreen(),
+      home: const AuthGate(),
+    );
+  }
+}
+
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    bool isInitialized = false;
+    try {
+      final _ = Supabase.instance.client;
+      isInitialized = true;
+    } catch (_) {
+      isInitialized = false;
+    }
+
+    if (!isInitialized) {
+      return const AuthScreen();
+    }
+
+    return StreamBuilder<AuthState>(
+      stream: Supabase.instance.client.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session != null) {
+          return const AppShellScreen();
+        }
+        return const AuthScreen();
+      },
     );
   }
 }

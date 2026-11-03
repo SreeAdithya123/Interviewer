@@ -114,7 +114,7 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
       _isAiSpeaking = true;
       _isCandidateRecording = false;
       _currentTurn = turnIndex + 1;
-      _currentStage = q['stage'] as String;
+      _currentStage = (q['stageLabel'] ?? q['stage']) as String;
     });
 
     // Dynamic simulated AI question delivery duration (approx 4s)
@@ -155,6 +155,7 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
     final turnData = {
       'turn': _currentTurn,
       'stage': q['stage'],
+      'stageLabel': q['stageLabel'] ?? q['stage'],
       'question': q['question'],
       'duration': _speechDurationSeconds,
       'transcript': transcript,
@@ -167,8 +168,8 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
       InterviewEngineService.recordTurn(
         interviewId: _interviewId,
         turnNumber: _currentTurn,
-        stage: q['stage'],
-        questionText: q['question'],
+        stage: q['stage'] as String,
+        questionText: q['question'] as String,
         transcript: transcript,
         durationSeconds: _speechDurationSeconds,
       );
@@ -210,7 +211,7 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
     );
 
     // Call real engine evaluation
-    await InterviewEngineService.finishInterviewAndGenerateReport(
+    final reportData = await InterviewEngineService.finishInterviewAndGenerateReport(
       interviewId: _interviewId,
       totalDurationSeconds: _totalSessionSeconds,
       targetRole: widget.targetRole,
@@ -223,9 +224,11 @@ class _MobileInterviewScreenState extends State<MobileInterviewScreen> {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(
           builder: (_) => MobileReportScreen(
+            interviewId: _interviewId,
             targetRole: widget.targetRole,
             difficulty: widget.difficulty,
             recordedTurns: _recordedTurns,
+            reportData: reportData,
           ),
         ),
       );

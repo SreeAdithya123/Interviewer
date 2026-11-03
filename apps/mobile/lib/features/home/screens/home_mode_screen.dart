@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:vyoman_interviewer/core/theme/vyoman_theme.dart';
 import 'package:vyoman_interviewer/features/dualcam/screens/qr_scanner_screen.dart';
 import 'package:vyoman_interviewer/features/standalone/screens/mobile_preflight_screen.dart';
@@ -8,6 +9,9 @@ class HomeModeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final userEmail = user?.email ?? 'student@vyoman.tech';
+
     return Scaffold(
       backgroundColor: VyomanTheme.surfacePorcelain,
       appBar: AppBar(
@@ -30,8 +34,7 @@ class HomeModeScreen extends StatelessWidget {
         ),
         actions: [
           Container(
-            margin: const EdgeInsets.only(right: 16),
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: VyomanTheme.primaryIndigo.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
@@ -39,15 +42,40 @@ class HomeModeScreen extends StatelessWidget {
             ),
             child: const Row(
               children: [
-                Icon(Icons.cloud_done, color: VyomanTheme.primaryIndigo, size: 14),
+                Icon(Icons.cloud_done, color: VyomanTheme.primaryIndigo, size: 12),
                 SizedBox(width: 4),
                 Text(
-                  'Connected',
-                  style: TextStyle(color: VyomanTheme.primaryIndigo, fontSize: 11, fontWeight: FontWeight.bold),
+                  'Online',
+                  style: TextStyle(color: VyomanTheme.primaryIndigo, fontSize: 10, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, size: 18),
+            tooltip: 'Sign Out',
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Sign Out', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  content: Text('Sign out of $userEmail?', style: const TextStyle(fontSize: 13)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: VyomanTheme.roseDanger),
+                      onPressed: () => Navigator.pop(ctx, true),
+                      child: const Text('Sign Out', style: TextStyle(color: Colors.white)),
+                    ),
+                  ],
+                ),
+              );
+              if (confirm == true) {
+                await Supabase.instance.client.auth.signOut();
+              }
+            },
+          ),
+          const SizedBox(width: 4),
         ],
       ),
       body: SingleChildScrollView(
@@ -55,6 +83,51 @@ class HomeModeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Student Profile Identity Card
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              margin: const EdgeInsets.only(bottom: 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: VyomanTheme.borderLight),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: VyomanTheme.primaryIndigo.withOpacity(0.12),
+                    child: Text(
+                      userEmail.substring(0, 1).toUpperCase(),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: VyomanTheme.primaryIndigo,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          userEmail,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: VyomanTheme.textPrimary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const Text(
+                          'Authenticated Supabase Session · Ready',
+                          style: TextStyle(fontSize: 10, color: VyomanTheme.emeraldGreen, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
             const Text(
               'Select Interview Mode',
               style: TextStyle(

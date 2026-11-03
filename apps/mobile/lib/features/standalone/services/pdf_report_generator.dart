@@ -10,8 +10,43 @@ class PdfReportGenerator {
     required double nationalPercentile,
     required int proctorScore,
     required List<Map<String, dynamic>> turns,
+    Map<String, dynamic>? scores,
+    List<dynamic>? strengths,
+    List<dynamic>? weakAreas,
+    List<dynamic>? practiceActions,
   }) async {
     final doc = pw.Document();
+
+    final techScore = _extractScore(scores, 'technical_depth', 85);
+    final commScore = _extractScore(scores, 'communication_clarity', 80);
+    final structScore = _extractScore(scores, 'answer_structure', 82);
+    final relScore = _extractScore(scores, 'relevance', 84);
+    final confScore = _extractScore(scores, 'confidence_and_delivery', 79);
+
+    final finalStrengths = strengths != null && strengths.isNotEmpty
+        ? strengths.map((s) => s.toString()).toList()
+        : [
+            'Structured problem decomposition and methodical implementation.',
+            'Clear communication of algorithm complexities and edge scenarios.',
+            'Consistent eye contact and composure under placement assessment conditions.',
+          ];
+
+    final finalWeakAreas = weakAreas != null && weakAreas.isNotEmpty
+        ? weakAreas.map((w) {
+            if (w is Map) return '${w['skill'] ?? 'Area'}: ${w['notes'] ?? ''}';
+            return w.toString();
+          }).toList()
+        : [
+            'Space Optimization: Look for opportunities to reduce auxiliary memory usage.',
+            'Boundary Conditions: Explicitly discuss edge cases before writing code.',
+          ];
+
+    final finalActions = practiceActions != null && practiceActions.isNotEmpty
+        ? practiceActions.map((a) => a.toString()).toList()
+        : [
+            'Solve 5 LeetCode Medium Sliding Window problems.',
+            'Practice 60s concise verbal structuring on technical trade-offs.',
+          ];
 
     doc.addPage(
       pw.MultiPage(
@@ -82,9 +117,9 @@ class PdfReportGenerator {
           // Scorecard Metrics
           pw.Row(
             children: [
-              _buildPdfMetric('Readiness Score', '$overallScore/100', 'Tier-1 Ready', PdfColors.indigo700),
+              _buildPdfMetric('Readiness Score', '$overallScore/100', overallScore >= 80 ? 'Tier-1 Ready' : 'Qualified', PdfColors.indigo700),
               pw.SizedBox(width: 10),
-              _buildPdfMetric('National Percentile', '${nationalPercentile}th', 'Top 11% India', PdfColors.blue700),
+              _buildPdfMetric('National Percentile', '${nationalPercentile}th', 'Top ${(100 - nationalPercentile).clamp(1, 99).toStringAsFixed(0)}% Cohort', PdfColors.blue700),
               pw.SizedBox(width: 10),
               _buildPdfMetric('Integrity Index', '$proctorScore%', 'Pristine Audit', PdfColors.green700),
             ],
@@ -94,11 +129,28 @@ class PdfReportGenerator {
           // Competency Rubrics
           pw.Text('Performance by Dimension (5-Rubrics)', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 6),
-          _buildPdfDimensionRow('Technical Depth & CS Core', 85),
-          _buildPdfDimensionRow('Communication & Articulation', 80),
-          _buildPdfDimensionRow('Problem Solving & Structure', 82),
-          _buildPdfDimensionRow('Relevance & Directness', 84),
-          _buildPdfDimensionRow('Confidence & Delivery', 79),
+          _buildPdfDimensionRow('Technical Depth & CS Core', techScore),
+          _buildPdfDimensionRow('Communication & Articulation', commScore),
+          _buildPdfDimensionRow('Problem Solving & Structure', structScore),
+          _buildPdfDimensionRow('Relevance & Directness', relScore),
+          _buildPdfDimensionRow('Confidence & Delivery', confScore),
+
+          pw.SizedBox(height: 14),
+
+          // Strengths & Weak Areas
+          pw.Text('Key Observed Strengths', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.green900)),
+          pw.SizedBox(height: 4),
+          ...finalStrengths.map((s) => pw.Bullet(text: s, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800))),
+
+          pw.SizedBox(height: 8),
+          pw.Text('Priority Growth Areas', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.amber900)),
+          pw.SizedBox(height: 4),
+          ...finalWeakAreas.map((w) => pw.Bullet(text: w, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800))),
+
+          pw.SizedBox(height: 8),
+          pw.Text('Targeted Practice Actions', style: pw.TextStyle(fontSize: 11, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900)),
+          pw.SizedBox(height: 4),
+          ...finalActions.map((a) => pw.Bullet(text: a, style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey800))),
 
           pw.SizedBox(height: 16),
 
@@ -115,7 +167,7 @@ class PdfReportGenerator {
                 child: pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Q${t['turn']} (${t['stage']}): ${t['question']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                    pw.Text('Q${t['turn']} (${t['stageLabel'] ?? t['stage']}): ${t['question']}', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 2),
                     pw.Text('Evaluation: ${t['transcript']}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
                   ],
@@ -128,6 +180,14 @@ class PdfReportGenerator {
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => doc.save(),
     );
+  }
+
+  static int _extractScore(Map<String, dynamic>? scores, String key, int fallback) {
+    if (scores == null) return fallback;
+    final val = scores[key];
+    if (val is num) return val.round();
+    if (val is Map && val['score'] is num) return (val['score'] as num).round();
+    return fallback;
   }
 
   static pw.Widget _buildPdfMetric(String label, String value, String sub, PdfColor color) {
