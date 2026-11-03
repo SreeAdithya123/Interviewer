@@ -157,7 +157,7 @@ class _MobileReportScreenState extends State<MobileReportScreen> {
       backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text(
-          'Executive Evaluation Dossier',
+          'Evaluation Dossier',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         elevation: 0,
@@ -278,12 +278,12 @@ class _MobileReportScreenState extends State<MobileReportScreen> {
                           ),
                         ),
                         const SizedBox(height: 6),
-                        Row(
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
                           children: [
                             _TagPill(label: '${widget.difficulty.toUpperCase()} Track', icon: Icons.speed_rounded),
-                            const SizedBox(width: 8),
                             _TagPill(label: '${widget.recordedTurns.length} Questions Evaluated', icon: Icons.quiz_outlined),
-                            const SizedBox(width: 8),
                             _TagPill(label: 'Campus Drive', icon: Icons.apartment_rounded),
                           ],
                         ),
@@ -659,29 +659,37 @@ class _MobileReportScreenState extends State<MobileReportScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                                  decoration: BoxDecoration(
-                                    color: VyomanTheme.primaryIndigo.withOpacity(0.08),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    'Question ${turn['turn']} · ${turn['stageLabel'] ?? turn['stage']}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                      color: VyomanTheme.primaryIndigo,
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: VyomanTheme.primaryIndigo.withOpacity(0.08),
+                                        borderRadius: BorderRadius.circular(6),
+                                      ),
+                                      child: Text(
+                                        'Question ${turn['turn']} · ${turn['stageLabel'] ?? turn['stage']}',
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                          color: VyomanTheme.primaryIndigo,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
                                   ),
                                 ),
+                                const SizedBox(width: 8),
                                 Row(
+                                  mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    const Icon(Icons.mic_none_rounded, size: 14, color: VyomanTheme.textMuted),
+                                    const Icon(Icons.mic_none_rounded, size: 13, color: VyomanTheme.textMuted),
                                     const SizedBox(width: 2),
                                     Text(
-                                      '${turn['duration']}s audio recorded',
+                                      '${turn['duration']}s audio',
                                       style: const TextStyle(fontSize: 10, color: VyomanTheme.textMuted),
                                     ),
                                   ],
@@ -695,6 +703,7 @@ class _MobileReportScreenState extends State<MobileReportScreen> {
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
                                 color: VyomanTheme.textPrimary,
+                                height: 1.4,
                               ),
                             ),
                             const SizedBox(height: 8),
