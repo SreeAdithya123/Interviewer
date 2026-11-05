@@ -17,12 +17,20 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import os
 import uuid
+
+import pytest
 
 from app.costs.tracking import compute_cost_paise
 from app.db import get_client, reset_client
 from app.interview import engine
 from app.providers import gemini
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("SUPABASE_URL"),
+    reason="Live Supabase integration test requires SUPABASE_URL",
+)
 
 
 async def test_engine_writes_real_rows_against_the_live_supabase_project(monkeypatch):

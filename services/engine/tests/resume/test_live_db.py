@@ -25,12 +25,20 @@ end, in FK-safe order, whether the test passes or fails.
 from __future__ import annotations
 
 import contextlib
+import os
 import uuid
+
+import pytest
 
 from app.costs.tracking import compute_cost_paise
 from app.db import get_client, reset_client
 from app.providers import gemini
 from app.resume import engine as resume_engine
+
+pytestmark = pytest.mark.skipif(
+    not os.environ.get("SUPABASE_URL"),
+    reason="Live Supabase integration test requires SUPABASE_URL",
+)
 
 
 async def test_scan_resume_writes_real_rows_against_the_live_supabase_project(monkeypatch):
