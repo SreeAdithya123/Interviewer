@@ -57,7 +57,7 @@ const plans = [
 
 const Pricing = () => {
   return (
-    <section id="pricing" className="relative overflow-hidden bg-muted/50 py-28 lg:py-40">
+    <section id="pricing" className="relative scroll-mt-28 overflow-hidden bg-muted/50 py-28 lg:py-40">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(50%_40%_at_50%_0%,hsl(244_66%_58%/0.06),transparent)]" />
 
       <div className="relative mx-auto max-w-5xl px-5 sm:px-8">

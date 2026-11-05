@@ -35,7 +35,7 @@ const differentiators = [
 
 const PhilosophySection = () => {
   return (
-    <section id="philosophy" className="relative bg-muted/50 py-28 lg:py-40">
+    <section id="philosophy" className="relative scroll-mt-28 bg-muted/50 py-28 lg:py-40">
       {/* faint section tint */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_50%_at_50%_0%,hsl(244_66%_58%/0.05),transparent)]" />
 

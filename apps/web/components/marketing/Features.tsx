@@ -56,7 +56,7 @@ const features = [
 
 const Features = () => {
   return (
-    <section id="features" className="relative bg-background py-28 lg:py-40">
+    <section id="features" className="relative scroll-mt-28 bg-background py-28 lg:py-40">
       <div className="mx-auto max-w-6xl px-5 sm:px-8">
         <SectionHeading
           align="left"

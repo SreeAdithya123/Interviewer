@@ -47,7 +47,7 @@ const WAVEFORM_PEAKS = Array.from({ length: 48 }, (_, i) => 0.2 + Math.abs(Math.
 
 const ProductSection = () => {
   return (
-    <section id="product" className="relative bg-background py-28 lg:py-40">
+    <section id="product" className="relative scroll-mt-28 bg-background py-28 lg:py-40">
       <div className="mx-auto grid max-w-6xl gap-16 px-5 sm:px-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-center lg:gap-20">
         {/* Editorial column */}
         <div>

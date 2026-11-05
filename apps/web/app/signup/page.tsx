@@ -24,7 +24,7 @@ export default async function SignupPage() {
           </Link>
           <h1 className="mt-4 text-2xl font-semibold text-foreground">Create your account</h1>
           <p className="mt-2 font-body text-sm text-muted-foreground">
-            Sign up with Google or verify your email with a 6-digit code.
+            Sign up with Google or receive a secure sign-in link by email.
           </p>
         </div>
 

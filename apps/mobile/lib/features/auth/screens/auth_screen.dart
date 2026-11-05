@@ -562,7 +562,7 @@ class _AuthScreenState extends State<AuthScreen> with SingleTickerProviderStateM
                                                 height: 20,
                                                 child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                                               )
-                                            : const Text('Send Sign-in Link & Code', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                                            : const Text('Send Sign-in Link', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: VyomanTheme.ink,
                                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

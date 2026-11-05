@@ -32,7 +32,7 @@ export default async function LoginPage({
           </Link>
           <h1 className="mt-4 text-2xl font-semibold text-foreground">Sign in</h1>
           <p className="mt-2 font-body text-sm text-muted-foreground">
-            Sign in with Google or receive a 6-digit verification code.
+            Sign in with Google or receive a secure sign-in link by email.
           </p>
         </div>
 
@@ -43,8 +43,8 @@ export default async function LoginPage({
             </p>
             <p className="mt-1 font-body text-sm text-destructive">
               {error === "auth_callback_failed"
-                ? message || "This link expired or was opened in a different browser. Enter your email below to receive a new link or enter your 6-digit code."
-                : message || "Authentication failed. Please request a new link."}
+                ? message || "This link expired or was opened in a different browser. Enter your email below to receive a new sign-in link."
+                : message || "Authentication failed. Please request a new sign-in link."}
             </p>
           </div>
         )}

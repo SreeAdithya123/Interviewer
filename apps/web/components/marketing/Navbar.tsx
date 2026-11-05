@@ -28,7 +28,7 @@ const LINKS = [
 const isAnchor = (href: string) => href.startsWith("#");
 
 const desktopLinkClass =
-  "rounded-full px-3.5 py-1.5 font-body text-[13px] font-medium text-muted-foreground transition-colors duration-300 hover:text-foreground";
+  "whitespace-nowrap rounded-full px-3.5 py-1.5 font-body text-[13px] font-medium text-muted-foreground transition-colors duration-300 hover:text-foreground";
 
 const Navbar = () => {
   const reduce = useReducedMotion();
@@ -68,24 +68,24 @@ const Navbar = () => {
       <header className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-4">
         <nav
           className={cn(
-            "pointer-events-auto mt-5 flex w-full max-w-3xl items-center justify-between gap-3 rounded-full py-2 pl-5 pr-2",
-            "border border-foreground/[0.06] backdrop-blur-xl transition-[background-color,box-shadow,margin,max-width] duration-700 ease-fluid",
+            "pointer-events-auto mt-4 flex w-full max-w-4xl items-center justify-between gap-3 rounded-full py-2 pl-5 pr-2",
+            "border border-foreground/[0.08] backdrop-blur-2xl transition-[background-color,box-shadow,margin,max-width] duration-300 ease-fluid",
             scrolled
-              ? "mt-3 max-w-2xl bg-background/80 shadow-ambient"
-              : "bg-background/55 shadow-[0_10px_40px_-24px_hsl(240_24%_12%/0.25)]",
+              ? "mt-2.5 bg-background/95 shadow-[0_8px_30px_rgb(0,0,0,0.12)] border-border"
+              : "bg-background/85 shadow-[0_10px_40px_-20px_hsl(240_24%_12%/0.2)]",
           )}
         >
           {/* Wordmark */}
           <button
             onClick={() => scrollTo("#top")}
-            className="flex items-center gap-2.5 pr-2"
+            className="flex shrink-0 items-center gap-2.5 pr-2"
             aria-label="Vyoman home"
           >
             <span className="relative grid h-7 w-7 place-items-center rounded-lg bg-ink text-ink-foreground">
               <span className="font-headline text-[13px] font-semibold leading-none">V</span>
               <span className="absolute inset-0 rounded-lg bg-gradient-to-tr from-primary/50 via-transparent to-accent/40 mix-blend-screen" />
             </span>
-            <span className="font-headline text-[15px] font-semibold tracking-tight text-foreground">
+            <span className="font-headline text-[15px] font-semibold tracking-tight text-foreground whitespace-nowrap">
               Vyoman
             </span>
           </button>
@@ -107,14 +107,14 @@ const Navbar = () => {
             ))}
           </ul>
 
-          <div className="hidden items-center gap-4 md:flex">
+          <div className="hidden shrink-0 items-center gap-3 md:flex">
             <Link
               href="/login"
-              className="rounded-full px-3 py-1.5 font-body text-[13px] font-medium text-muted-foreground transition-colors duration-300 hover:text-foreground"
+              className="whitespace-nowrap rounded-full px-3 py-1.5 font-body text-[13px] font-medium text-muted-foreground transition-colors duration-300 hover:text-foreground"
             >
               Log in
             </Link>
-            <PremiumButton size="md" href="/signup">
+            <PremiumButton size="md" href="/signup" className="whitespace-nowrap">
               Start free
             </PremiumButton>
           </div>

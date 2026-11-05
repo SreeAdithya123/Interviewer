@@ -17,6 +17,7 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
+  const [showOtpInput, setShowOtpInput] = useState(false);
 
   // OTP token verification state
   const [otpToken, setOtpToken] = useState("");
@@ -162,66 +163,104 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
     return (
       <div className="rounded-3xl border border-border/80 bg-card p-7 shadow-soft">
         <div className="text-center">
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-xl text-primary shadow-inner">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-2xl text-primary shadow-inner">
             ✉️
           </div>
-          <h2 className="mt-3 font-headline text-lg font-semibold text-foreground">
-            Enter Verification Code
+          <h2 className="mt-3.5 font-headline text-xl font-semibold text-foreground">
+            Check your email
           </h2>
-          <p className="mt-1 font-body text-xs text-muted-foreground">
-            We sent a 6-digit verification code to{" "}
+          <p className="mt-1.5 font-body text-xs text-muted-foreground leading-relaxed">
+            We sent a secure sign-in link to{" "}
             <span className="font-semibold text-foreground">{email}</span>
           </p>
         </div>
 
-        {/* Enter 6-digit code directly */}
-        <form onSubmit={handleVerifyOtp} className="mt-6 border-t border-border/60 pt-5">
-          <label
-            htmlFor="otp-code"
-            className="block text-center font-body text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-          >
-            6-digit Code
-          </label>
-          <input
-            id="otp-code"
-            name="otp-code"
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            maxLength={6}
-            required
-            autoFocus
-            value={otpToken}
-            onChange={(e) => setOtpToken(e.target.value.replace(/\D/g, ""))}
-            placeholder="······"
-            className="mt-2 w-full rounded-2xl border border-input bg-background px-4 py-3 text-center font-mono text-2xl tracking-[0.4em] font-semibold text-foreground outline-none transition-colors focus:border-primary shadow-inner"
-          />
+        {/* Primary Link Instruction Card */}
+        <div className="mt-5 rounded-2xl border border-primary/25 bg-primary/[0.04] p-4 text-left shadow-sm">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-white text-[10px] font-bold">
+              ✓
+            </div>
+            <div className="space-y-1 text-xs">
+              <p className="font-semibold text-foreground">Tap the link in your email</p>
+              <p className="text-muted-foreground leading-relaxed">
+                Open the email and click the <strong className="text-foreground">"Sign In"</strong> button to log in directly. No password or verification code needed.
+              </p>
+            </div>
+          </div>
+        </div>
 
-          {verifyError && (
-            <p className="mt-2 text-center font-body text-xs text-destructive">
-              {verifyError}
-            </p>
-          )}
+        {/* Quick action: Open mail app */}
+        <a
+          href={email.endsWith("@gmail.com") ? "https://mail.google.com" : "mailto:"}
+          target="_blank"
+          rel="noreferrer"
+          className="btn-primary mt-4 flex w-full items-center justify-center gap-2 text-center"
+        >
+          <span>Open Email App</span>
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </a>
 
+        {/* Optional code fallback toggle */}
+        <div className="mt-4 text-center">
           <button
-            type="submit"
-            disabled={verifying || otpToken.trim().length < 6}
-            className="btn-primary mt-4 w-full disabled:opacity-50"
+            type="button"
+            onClick={() => setShowOtpInput((v) => !v)}
+            className="font-body text-xs text-muted-foreground hover:text-foreground transition-colors underline"
           >
-            {verifying ? "Verifying code..." : "Verify & Sign In"}
+            {showOtpInput ? "Hide code entry" : "Have a 6-digit code instead?"}
           </button>
-        </form>
+        </div>
 
-        <p className="mt-4 text-center font-body text-[11px] text-muted-foreground">
-          You can also click the direct sign-in button in the email.
-        </p>
+        {/* Enter 6-digit code directly (if toggled) */}
+        {showOtpInput && (
+          <form onSubmit={handleVerifyOtp} className="mt-4 border-t border-border/60 pt-4">
+            <label
+              htmlFor="otp-code"
+              className="block text-center font-body text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+            >
+              6-digit Code
+            </label>
+            <input
+              id="otp-code"
+              name="otp-code"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              required
+              autoFocus
+              value={otpToken}
+              onChange={(e) => setOtpToken(e.target.value.replace(/\D/g, ""))}
+              placeholder="······"
+              className="mt-2 w-full rounded-2xl border border-input bg-background px-4 py-3 text-center font-mono text-2xl tracking-[0.4em] font-semibold text-foreground outline-none transition-colors focus:border-primary shadow-inner"
+            />
 
-        <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3 text-xs">
+            {verifyError && (
+              <p className="mt-2 text-center font-body text-xs text-destructive">
+                {verifyError}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={verifying || otpToken.trim().length < 6}
+              className="btn-primary mt-3 w-full disabled:opacity-50"
+            >
+              {verifying ? "Verifying code..." : "Verify & Sign In"}
+            </button>
+          </form>
+        )}
+
+        <div className="mt-5 flex items-center justify-between border-t border-border/50 pt-3 text-xs">
           <button
             type="button"
             onClick={() => {
               setStatus("idle");
               setOtpToken("");
+              setShowOtpInput(false);
             }}
             className="font-medium text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -233,7 +272,7 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
             disabled={resendCooldown > 0}
             className="font-medium text-primary hover:underline disabled:opacity-50"
           >
-            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend code"}
+            {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : "Resend sign-in link"}
           </button>
         </div>
       </div>
@@ -276,11 +315,11 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
           <div className="w-full border-t border-border/70" />
         </div>
         <span className="relative bg-card px-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          or with email verification code
+          or with email sign-in link
         </span>
       </div>
 
-      {/* 2. Email Verification Code Form */}
+      {/* 2. Email Sign-In Link Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="email" className="font-body text-xs font-medium text-foreground">
@@ -311,10 +350,10 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
           className="btn-primary w-full disabled:opacity-50"
         >
           {status === "submitting"
-            ? "Sending verification code..."
+            ? "Sending sign-in link..."
             : mode === "signup"
-              ? "Send verification code & sign up"
-              : "Send 6-digit verification code"}
+              ? "Send sign-in link & sign up"
+              : "Send sign-in link"}
         </button>
       </form>
     </div>
