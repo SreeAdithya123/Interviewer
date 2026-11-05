@@ -91,8 +91,6 @@ export async function saveBiometricBaseline(
 
   if (!fullError) {
     revalidatePath("/app/profile");
-    revalidatePath("/app");
-    revalidatePath("/app/interview");
     return { success: true, verifiedAt };
   }
 
@@ -114,7 +112,5 @@ export async function saveBiometricBaseline(
   }
 
   revalidatePath("/app/profile");
-  revalidatePath("/app");
-  revalidatePath("/app/interview");
   return { success: true, verifiedAt };
 }
