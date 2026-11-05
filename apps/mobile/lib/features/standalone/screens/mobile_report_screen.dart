@@ -256,14 +256,19 @@ class _MobileReportScreenState extends State<MobileReportScreen> {
                                 ],
                               ),
                             ),
-                            const Spacer(),
-                            Text(
-                              '#VY-${(widget.interviewId ?? DateTime.now().millisecondsSinceEpoch.toString()).replaceAll('-', '').substring(0, 8).toUpperCase()}',
-                              style: const TextStyle(
-                                color: VyomanTheme.textMuted,
-                                fontSize: 11,
-                                fontFamily: 'monospace',
-                                fontWeight: FontWeight.bold,
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '#VY-${(widget.interviewId ?? DateTime.now().millisecondsSinceEpoch.toString()).replaceAll('-', '').substring(0, 8).toUpperCase()}',
+                                textAlign: TextAlign.right,
+                                style: const TextStyle(
+                                  color: VyomanTheme.textMuted,
+                                  fontSize: 11,
+                                  fontFamily: 'monospace',
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
                           ],
@@ -306,15 +311,20 @@ class _MobileReportScreenState extends State<MobileReportScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text(
-                              'PLACEMENT CONSENSUS VERDICT',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
-                                color: verdict['color'] as Color,
-                                letterSpacing: 0.6,
+                            Expanded(
+                              child: Text(
+                                'PLACEMENT CONSENSUS VERDICT',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: verdict['color'] as Color,
+                                  letterSpacing: 0.6,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ),
+                            const SizedBox(width: 8),
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                               decoration: BoxDecoration(
@@ -927,20 +937,23 @@ class _DimensionDetailRow extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  category.toUpperCase(),
-                  style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: VyomanTheme.textMuted, letterSpacing: 0.4),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  label,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: VyomanTheme.textPrimary),
-                ),
-              ],
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    category.toUpperCase(),
+                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: VyomanTheme.textMuted, letterSpacing: 0.4),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: VyomanTheme.textPrimary),
+                  ),
+                ],
+              ),
             ),
+            const SizedBox(width: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,

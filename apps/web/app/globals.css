@@ -2,6 +2,7 @@
    reference Lovable/Vite build (reference/lovable-site/src/index.css).
    Plus Jakarta Sans and Space Grotesk are loaded via next/font/google in
    app/layout.tsx instead, and wired to --font-body / --font-metric below. */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
 @import url('https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap');
 
 @tailwind base;
@@ -19,6 +20,8 @@
 @layer base {
   :root {
     /* Typography */
+    --font-jakarta: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    --font-grotesk: 'Space Grotesk', system-ui, sans-serif;
     --font-headline: 'Clash Display', var(--font-grotesk), system-ui, sans-serif;
     --font-body: var(--font-jakarta), system-ui, -apple-system, sans-serif;
     --font-metric: var(--font-grotesk), system-ui, sans-serif;

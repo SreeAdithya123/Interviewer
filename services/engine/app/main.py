@@ -13,9 +13,9 @@ interview/turn is in a sane state for the requested action (translated into
 
 from __future__ import annotations
 
-from dataclasses import asdict
 import hmac
 import os
+from dataclasses import asdict
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
