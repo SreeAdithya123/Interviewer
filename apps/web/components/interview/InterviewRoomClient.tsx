@@ -513,6 +513,7 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
           interviewRole={interview.target_role || `${INTERVIEW_TYPE_LABELS[interview.interview_type]} Assessment`}
           candidateProfile={candidateProfile}
           onAllPassedAndStart={handlePreFlightCompleted}
+          onClose={() => router.push("/app/interview")}
         />
       </div>
     );

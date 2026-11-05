@@ -23,6 +23,8 @@ import {
   ShieldAlert,
   Sparkles,
   UserCheck,
+  X,
+  ArrowLeft,
 } from "lucide-react";
 import {
   compareFaceEmbeddings,
@@ -40,12 +42,14 @@ interface PreFlightCheckModalProps {
   interviewRole?: string;
   candidateProfile?: CandidateProfileProps;
   onAllPassedAndStart: (stream: MediaStream, isExternalCamera: boolean) => void;
+  onClose?: () => void;
 }
 
 export function PreFlightCheckModal({
   interviewRole = "Campus Placement Assessment",
   candidateProfile,
   onAllPassedAndStart,
+  onClose,
 }: PreFlightCheckModalProps) {
   const [localProfile, setLocalProfile] = useState<CandidateProfileProps | undefined>(candidateProfile);
 
@@ -568,6 +572,17 @@ export function PreFlightCheckModal({
     onAllPassedAndStart(activeStream, status.camera.isExternal);
   };
 
+  const handleComeBack = useCallback(() => {
+    if (activeStream) {
+      activeStream.getTracks().forEach((track) => track.stop());
+    }
+    if (onClose) {
+      onClose();
+    } else {
+      window.location.href = "/app/interview";
+    }
+  }, [activeStream, onClose]);
+
   const isPermissionsMissing = !status.camera.hasPermission || !status.microphone.hasPermission;
 
   return (
@@ -579,7 +594,19 @@ export function PreFlightCheckModal({
             <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] font-medium uppercase text-muted-foreground">
               Pre-Flight Integrity Gate
             </span>
-            <span className="text-xs font-mono text-muted-foreground">{interviewRole}</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-muted-foreground">{interviewRole}</span>
+              <button
+                type="button"
+                onClick={handleComeBack}
+                aria-label="Come back and exit"
+                className="ml-2 inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                title="Come back to interviews list"
+              >
+                <X className="h-3.5 w-3.5" />
+                <span>Come back</span>
+              </button>
+            </div>
           </div>
           <h2 className="font-heading text-lg font-semibold text-foreground">
             System, Display & Hardware Verification
@@ -990,7 +1017,15 @@ export function PreFlightCheckModal({
         )}
 
         {/* Action Gate Button */}
-        <div className="flex items-center justify-end gap-3 border-t border-border/80 pt-3">
+        <div className="flex items-center justify-between gap-3 border-t border-border/80 pt-3">
+          <button
+            type="button"
+            onClick={handleComeBack}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-border bg-background px-4 text-xs font-semibold text-foreground hover:bg-muted transition-all"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            <span>Come back</span>
+          </button>
           <button
             type="button"
             onClick={handleStartInterview}
