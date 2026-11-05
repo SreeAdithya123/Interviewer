@@ -708,10 +708,9 @@ export function InterviewReportClient({
       {/* =========================================================================
           TAB 1: EXECUTIVE OVERVIEW & SCORECARD
          ========================================================================= */}
-      {(activeTab === "overview" || typeof window !== "undefined") && (
-        <div className={`space-y-6 ${activeTab !== "overview" ? "print:block hidden" : "block"}`}>
-          {/* Executive Summary Narrative */}
-          <Card className="p-6 space-y-4">
+      <div className={`space-y-6 ${activeTab !== "overview" ? "print:block hidden" : "block"}`}>
+        {/* Executive Summary Narrative */}
+        <Card className="p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-border/80 pb-3">
               <div>
                 <h3 className="font-heading text-sm font-semibold text-foreground flex items-center gap-2">
@@ -903,15 +902,13 @@ export function InterviewReportClient({
               </div>
             </div>
           </Card>
-        </div>
-      )}
+      </div>
 
       {/* =========================================================================
           TAB 2: 5-DIMENSION RUBRIC BREAKDOWN
          ========================================================================= */}
-      {(activeTab === "competencies" || typeof window !== "undefined") && (
-        <div className={`space-y-4 ${activeTab !== "competencies" ? "print:block hidden" : "block"}`}>
-          <div className="flex items-center justify-between">
+      <div className={`space-y-4 ${activeTab !== "competencies" ? "print:block hidden" : "block"}`}>
+        <div className="flex items-center justify-between">
             <div>
               <h2 className="font-heading text-base font-semibold text-foreground">
                 Placement Competency Rubrics
@@ -1012,15 +1009,13 @@ export function InterviewReportClient({
               );
             })}
           </div>
-        </div>
-      )}
+      </div>
 
       {/* =========================================================================
           TAB 3: TURN-BY-TURN QUESTION DIAGNOSTIC
          ========================================================================= */}
-      {(activeTab === "questions" || typeof window !== "undefined") && (
-        <div className={`space-y-4 ${activeTab !== "questions" ? "print:block hidden" : "block"}`}>
-          <div className="flex items-center justify-between">
+      <div className={`space-y-4 ${activeTab !== "questions" ? "print:block hidden" : "block"}`}>
+        <div className="flex items-center justify-between">
             <div>
               <h2 className="font-heading text-base font-semibold text-foreground">
                 Turn-by-Turn Question Diagnostic
@@ -1045,15 +1040,13 @@ export function InterviewReportClient({
               ))}
             </div>
           )}
-        </div>
-      )}
+      </div>
 
       {/* =========================================================================
           TAB 4: INTEGRITY & PROCTORING TELEMETRY
          ========================================================================= */}
-      {(activeTab === "integrity" || typeof window !== "undefined") && (
-        <div className={`space-y-6 ${activeTab !== "integrity" ? "print:block hidden" : "block"}`}>
-          <div className="flex items-center justify-between">
+      <div className={`space-y-6 ${activeTab !== "integrity" ? "print:block hidden" : "block"}`}>
+        <div className="flex items-center justify-between">
             <div>
               <h2 className="font-heading text-base font-semibold text-foreground">
                 Continuous Proctoring & Integrity Telemetry
@@ -1074,15 +1067,13 @@ export function InterviewReportClient({
 
           {/* Detailed Proctoring Card */}
           <ProctoringAuditCard summary={proctoringSummary} />
-        </div>
-      )}
+      </div>
 
       {/* =========================================================================
           TAB 5: 7-DAY ACTION PLAN & ROADMAP
          ========================================================================= */}
-      {(activeTab === "action_plan" || typeof window !== "undefined") && (
-        <div className={`space-y-6 ${activeTab !== "action_plan" ? "print:block hidden" : "block"}`}>
-          <div className="flex items-center justify-between">
+      <div className={`space-y-6 ${activeTab !== "action_plan" ? "print:block hidden" : "block"}`}>
+        <div className="flex items-center justify-between">
             <div>
               <h2 className="font-heading text-base font-semibold text-foreground">
                 Prescriptive 7-Day Placement Sprint Plan
@@ -1198,8 +1189,7 @@ export function InterviewReportClient({
               </Link>
             </div>
           </Card>
-        </div>
-      )}
+      </div>
     </div>
   );
 }
