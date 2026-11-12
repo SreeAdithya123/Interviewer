@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { createClient } from "@/lib/supabase/client";
 
 function createImplicitClient() {
   return createBrowserClient(
@@ -14,7 +15,10 @@ function createImplicitClient() {
 type Status = "idle" | "submitting" | "sent" | "error";
 
 export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
+  const [authMethod, setAuthMethod] = useState<"password" | "link">("password");
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
   const [showOtpInput, setShowOtpInput] = useState(false);
@@ -25,6 +29,21 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
   const [verifyError, setVerifyError] = useState<string | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  function fillDemoAccount(role: "student" | "college" | "admin") {
+    if (role === "student") {
+      setEmail("demo.student@vyoman.tech");
+      setPassword("Vyoman@2026!");
+    } else if (role === "college") {
+      setEmail("demo.college@vyoman.tech");
+      setPassword("Vyoman@2026!");
+    } else {
+      setEmail("demo.admin@vyoman.tech");
+      setPassword("Vyoman@2026!");
+    }
+    setAuthMethod("password");
+    setError(null);
+  }
 
   async function handleGoogleSignIn() {
     setGoogleLoading(true);
@@ -45,6 +64,58 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to connect to Google.");
       setGoogleLoading(false);
+    }
+  }
+
+  async function handlePasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setStatus("submitting");
+    setError(null);
+
+    const supabase = createClient();
+    if (mode === "signup") {
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback`,
+        },
+      });
+
+      if (signUpError) {
+        setStatus("error");
+        setError(signUpError.message);
+        return;
+      }
+
+      if (data?.session) {
+        window.location.href = "/onboarding";
+      } else {
+        setStatus("sent");
+      }
+      return;
+    }
+
+    const { data, error: pwError } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password,
+    });
+
+    if (pwError) {
+      setStatus("error");
+      setError(pwError.message);
+      return;
+    }
+
+    if (data?.user) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role, college_id, onboarded_at")
+        .eq("id", data.user.id)
+        .single();
+
+      const destination = profile?.onboarded_at ? "/app" : "/onboarding";
+      window.location.href = destination;
     }
   }
 
@@ -315,47 +386,174 @@ export function EmailOtpForm({ mode }: { mode: "login" | "signup" }) {
           <div className="w-full border-t border-border/70" />
         </div>
         <span className="relative bg-card px-2.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-          or with email sign-in link
+          or sign in with email
         </span>
       </div>
 
-      {/* 2. Email Sign-In Link Form */}
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label htmlFor="email" className="font-body text-xs font-medium text-foreground">
-            Email address
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            placeholder="you@college.edu.in"
-            className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-xs text-foreground outline-none transition-colors focus:border-primary"
-          />
-        </div>
-
-        {status === "error" && error && (
-          <p className="rounded-xl bg-destructive/10 px-3.5 py-2.5 font-body text-xs text-destructive">
-            {error}
-          </p>
-        )}
-
+      {/* Method Switcher Tabs */}
+      <div className="mb-4 grid grid-cols-2 gap-1 rounded-2xl bg-muted/50 p-1 text-xs">
         <button
-          type="submit"
-          disabled={status === "submitting" || !email}
-          className="btn-primary w-full disabled:opacity-50"
+          type="button"
+          onClick={() => {
+            setAuthMethod("password");
+            setError(null);
+          }}
+          className={`rounded-xl py-1.5 font-medium transition-all ${
+            authMethod === "password"
+              ? "bg-background font-semibold text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
         >
-          {status === "submitting"
-            ? "Sending sign-in link..."
-            : mode === "signup"
-              ? "Send sign-in link & sign up"
-              : "Send sign-in link"}
+          Password
         </button>
-      </form>
+        <button
+          type="button"
+          onClick={() => {
+            setAuthMethod("link");
+            setError(null);
+          }}
+          className={`rounded-xl py-1.5 font-medium transition-all ${
+            authMethod === "link"
+              ? "bg-background font-semibold text-foreground shadow-xs"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Sign-in Link
+        </button>
+      </div>
+
+      {/* 2. Password or Link Form */}
+      {authMethod === "password" ? (
+        <form onSubmit={handlePasswordSubmit} className="space-y-3.5">
+          <div>
+            <label htmlFor="email" className="font-body text-xs font-medium text-foreground">
+              Email address
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@college.edu.in"
+              className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-xs text-foreground outline-none transition-colors focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between">
+              <label htmlFor="password" className="font-body text-xs font-medium text-foreground">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              autoComplete={mode === "signup" ? "new-password" : "current-password"}
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="••••••••••••"
+              className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-xs text-foreground outline-none transition-colors focus:border-primary"
+            />
+          </div>
+
+          {status === "error" && error && (
+            <p className="rounded-xl bg-destructive/10 px-3.5 py-2.5 font-body text-xs text-destructive">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={status === "submitting" || !email || !password}
+            className="btn-primary w-full disabled:opacity-50"
+          >
+            {status === "submitting"
+              ? "Signing in..."
+              : mode === "signup"
+                ? "Create Account & Sign In"
+                : "Sign In"}
+          </button>
+
+          {/* Quick Demo Credentials */}
+          <div className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-3 text-left">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-primary">
+              Demo Credentials for Testing
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => fillDemoAccount("student")}
+                className="rounded-lg border border-primary/30 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-primary/10 transition-colors"
+              >
+                🎓 Student
+              </button>
+              <button
+                type="button"
+                onClick={() => fillDemoAccount("college")}
+                className="rounded-lg border border-primary/30 bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-primary/10 transition-colors"
+              >
+                🏛️ College Dean
+              </button>
+              <button
+                type="button"
+                onClick={() => fillDemoAccount("admin")}
+                className="rounded-lg border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:bg-muted/80 transition-colors"
+              >
+                🛡️ Platform Admin
+              </button>
+            </div>
+          </div>
+        </form>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label htmlFor="email" className="font-body text-xs font-medium text-foreground">
+              Email address
+            </label>
+            <input
+              id="email"
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@college.edu.in"
+              className="mt-1.5 w-full rounded-2xl border border-input bg-background px-4 py-2.5 font-body text-xs text-foreground outline-none transition-colors focus:border-primary"
+            />
+          </div>
+
+          {status === "error" && error && (
+            <p className="rounded-xl bg-destructive/10 px-3.5 py-2.5 font-body text-xs text-destructive">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={status === "submitting" || !email}
+            className="btn-primary w-full disabled:opacity-50"
+          >
+            {status === "submitting"
+              ? "Sending sign-in link..."
+              : mode === "signup"
+                ? "Send sign-in link & sign up"
+                : "Send sign-in link"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
