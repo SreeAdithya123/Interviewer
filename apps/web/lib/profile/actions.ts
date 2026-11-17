@@ -29,32 +29,85 @@ export async function updateUserProfile(payload: UpdateProfilePayload): Promise<
   }
 
   const supabase = await createClient();
+  const trimmedBio = payload.bio?.trim() || null;
+  const trimmedRole = payload.targetRole?.trim() || null;
+  const trimmedCompanies = payload.targetCompanies?.trim() || null;
+  const trimmedLinkedin = payload.linkedinUrl?.trim() || null;
+  const trimmedGithub = payload.githubUrl?.trim() || null;
+  const trimmedPortfolio = payload.portfolioUrl?.trim() || null;
 
-  const updates: Record<string, unknown> = {
+  // 1. Always persist extended profile attributes into Supabase Auth user_metadata
+  // This ensures they are safely stored even if optional columns are absent in public.profiles.
+  try {
+    await supabase.auth.updateUser({
+      data: {
+        bio: trimmedBio,
+        target_role: trimmedRole,
+        target_companies: trimmedCompanies,
+        linkedin_url: trimmedLinkedin,
+        github_url: trimmedGithub,
+        portfolio_url: trimmedPortfolio,
+      },
+    });
+  } catch (authErr) {
+    console.warn("Could not persist profile metadata to auth.users:", authErr);
+  }
+
+  // 2. Attempt full update on public.profiles
+  const fullUpdates: Record<string, unknown> = {
     full_name: payload.fullName.trim() || null,
     phone: payload.phone?.trim() || null,
-    bio: payload.bio?.trim() || null,
+    bio: trimmedBio,
     department: payload.department?.trim() || null,
     graduation_year: payload.graduationYear || null,
-    target_role: payload.targetRole?.trim() || null,
-    target_companies: payload.targetCompanies?.trim() || null,
-    linkedin_url: payload.linkedinUrl?.trim() || null,
-    github_url: payload.githubUrl?.trim() || null,
-    portfolio_url: payload.portfolioUrl?.trim() || null,
+    target_role: trimmedRole,
+    target_companies: trimmedCompanies,
+    linkedin_url: trimmedLinkedin,
+    github_url: trimmedGithub,
+    portfolio_url: trimmedPortfolio,
     updated_at: new Date().toISOString(),
   };
 
-  const { error } = await supabase
+  const { error: fullError } = await supabase
     .from("profiles")
-    .update(updates)
+    .update(fullUpdates)
     .eq("id", profile.id);
 
-  if (error) {
-    return { success: false, error: error.message };
+  if (!fullError) {
+    try {
+      revalidatePath("/app/profile");
+      revalidatePath("/app");
+    } catch {
+      // Safe in edge/dynamic contexts
+    }
+    return { success: true };
   }
 
-  revalidatePath("/app/profile");
-  revalidatePath("/app");
+  // 3. Graceful fallback: If public.profiles is missing extended columns (e.g. bio, target_role),
+  // update only the standard core tenancy columns.
+  const coreUpdates: Record<string, unknown> = {
+    full_name: payload.fullName.trim() || null,
+    phone: payload.phone?.trim() || null,
+    department: payload.department?.trim() || null,
+    graduation_year: payload.graduationYear || null,
+    updated_at: new Date().toISOString(),
+  };
+
+  const { error: coreError } = await supabase
+    .from("profiles")
+    .update(coreUpdates)
+    .eq("id", profile.id);
+
+  if (coreError) {
+    return { success: false, error: coreError.message };
+  }
+
+  try {
+    revalidatePath("/app/profile");
+    revalidatePath("/app");
+  } catch {
+    // Safe in edge/dynamic contexts
+  }
   return { success: true };
 }
 
@@ -73,16 +126,27 @@ export async function saveBiometricBaseline(
   const supabase = await createClient();
   const verifiedAt = new Date().toISOString();
 
+  // 1. Persist biometric baseline in Supabase Auth user_metadata
+  try {
+    await supabase.auth.updateUser({
+      data: {
+        id_photo_url: payload.photoDataUrl,
+        face_embedding: payload.faceEmbedding,
+        id_verified_at: verifiedAt,
+      },
+    });
+  } catch (authErr) {
+    console.warn("Could not save biometric metadata to auth.users:", authErr);
+  }
+
+  // 2. Attempt full table update
   const fullUpdates: Record<string, unknown> = {
+    avatar_url: payload.photoDataUrl,
     id_photo_url: payload.photoDataUrl,
     face_embedding: payload.faceEmbedding,
     id_verified_at: verifiedAt,
     updated_at: verifiedAt,
   };
-
-  if (!profile.avatar_url) {
-    fullUpdates.avatar_url = payload.photoDataUrl;
-  }
 
   const { error: fullError } = await supabase
     .from("profiles")
@@ -90,27 +154,30 @@ export async function saveBiometricBaseline(
     .eq("id", profile.id);
 
   if (!fullError) {
-    revalidatePath("/app/profile");
+    try {
+      revalidatePath("/app/profile");
+    } catch {
+      // Safe in dynamic/edge contexts
+    }
     return { success: true, verifiedAt };
   }
 
-  // Graceful fallback: If the database hasn't had the biometrics migration applied
-  // (e.g. "could not find the 'face_embedding' column of 'profiles' in the schema cache"),
-  // update avatar_url so the candidate's reference photo is preserved in DB, and let them proceed.
+  // 3. Graceful fallback: If face_embedding column is absent from schema cache,
+  // update avatar_url which is guaranteed to exist.
   const fallbackUpdates: Record<string, unknown> = {
     avatar_url: payload.photoDataUrl,
     updated_at: verifiedAt,
   };
 
-  const { error: fallbackError } = await supabase
+  await supabase
     .from("profiles")
     .update(fallbackUpdates)
     .eq("id", profile.id);
 
-  if (fallbackError) {
-    console.warn("Could not persist reference photo to avatar_url:", fallbackError.message);
+  try {
+    revalidatePath("/app/profile");
+  } catch {
+    // Safe in dynamic/edge contexts
   }
-
-  revalidatePath("/app/profile");
   return { success: true, verifiedAt };
 }

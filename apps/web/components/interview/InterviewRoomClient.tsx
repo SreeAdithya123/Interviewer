@@ -521,12 +521,22 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
 
   if (phase === "error") {
     return (
-      <div className="max-w-3xl space-y-4">
-        <Card>
+      <div className="max-w-3xl space-y-4 mx-auto pt-8">
+        <Card className="p-6">
           <h2 className="font-headline text-lg font-semibold text-foreground">Something went wrong</h2>
           <p className="mt-2 font-body text-sm text-destructive">{errorMessage}</p>
           <div className="mt-4 flex flex-wrap gap-3">
-            <button type="button" className="btn-primary" onClick={() => loadNextTurn()}>
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => {
+                if (finishedRef.current) {
+                  router.push(`/app/interview/${interviewId}/report`);
+                } else {
+                  loadNextTurn();
+                }
+              }}
+            >
               Try that again
             </button>
             <button
@@ -535,6 +545,13 @@ export function InterviewRoomClient({ interview, candidateProfile }: InterviewRo
               onClick={() => router.push(`/app/interview/${interviewId}/report`)}
             >
               Go to report
+            </button>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => router.push("/app/interview")}
+            >
+              Back to interviews
             </button>
           </div>
         </Card>

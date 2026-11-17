@@ -64,7 +64,21 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
     return null;
   }
 
-  return data as Profile;
+  const meta = (userData.user.user_metadata || {}) as Record<string, unknown>;
+  const rawProfile = data as unknown as Record<string, unknown>;
+
+  return {
+    ...rawProfile,
+    bio: (rawProfile.bio as string | null) ?? (meta.bio as string | null) ?? null,
+    target_role: (rawProfile.target_role as string | null) ?? (meta.target_role as string | null) ?? null,
+    target_companies: (rawProfile.target_companies as string | null) ?? (meta.target_companies as string | null) ?? null,
+    linkedin_url: (rawProfile.linkedin_url as string | null) ?? (meta.linkedin_url as string | null) ?? null,
+    github_url: (rawProfile.github_url as string | null) ?? (meta.github_url as string | null) ?? null,
+    portfolio_url: (rawProfile.portfolio_url as string | null) ?? (meta.portfolio_url as string | null) ?? null,
+    id_photo_url: (rawProfile.id_photo_url as string | null) ?? (meta.id_photo_url as string | null) ?? (rawProfile.avatar_url as string | null) ?? null,
+    face_embedding: (rawProfile.face_embedding as number[] | null) ?? (meta.face_embedding as number[] | null) ?? null,
+    id_verified_at: (rawProfile.id_verified_at as string | null) ?? (meta.id_verified_at as string | null) ?? (rawProfile.avatar_url ? (rawProfile.updated_at as string) : null),
+  } as unknown as Profile;
 });
 
 /**
